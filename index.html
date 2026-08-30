@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grade 2 Writing Queue</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div class="app-layout">
+        
+        <!-- Left Side: Student Interaction & Timer -->
+        <div class="student-sidebar">
+            <div class="timer-section">
+                <!-- Flip Clock Container (built by app.js) - always visible -->
+                <div class="clock classroom-clock"></div>
+
+                <!-- Subtle handle to slide the controls drawer open/closed -->
+                <button class="controls-handle" id="btn-toggle-controls" aria-expanded="false" aria-controls="controls-panel" aria-label="Show timer controls">
+                    <svg class="handle-chevron" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                </button>
+
+                <!-- Collapsible drawer: min/sec nudges + gear/play/pause/stop -->
+                <div class="controls-collapse" id="controls-panel">
+                    <div class="controls-collapse-inner">
+                        <div class="controls-collapse-content">
+                            <!-- Minute / Second nudge controls: + stacked over - so each
+                                 button gets the full group width as its touch target -->
+                            <div class="adjust-row">
+                                <div class="adjust-group">
+                                    <span class="adjust-label">MIN</span>
+                                    <div class="adjust-stack">
+                                        <button class="t-btn plus" id="btn-increase-minute" aria-label="Increase minutes">+</button>
+                                        <button class="t-btn minus" id="btn-reduce-minute" aria-label="Decrease minutes">&minus;</button>
+                                    </div>
+                                </div>
+                                <div class="adjust-group">
+                                    <span class="adjust-label">SEC</span>
+                                    <div class="adjust-stack">
+                                        <button class="t-btn plus" id="btn-increase-second" aria-label="Increase seconds">+</button>
+                                        <button class="t-btn minus" id="btn-reduce-second" aria-label="Decrease seconds">&minus;</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Settings gear + Play/Pause/Stop, one row -->
+                            <div class="timer-action-row">
+                                <button class="gear-btn" id="btn-settings" title="Timer Settings" aria-label="Timer Settings">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                                </button>
+                                <button class="t-action start" id="btn-start" title="Start">▶</button>
+                                <button class="t-action pause" id="btn-pause" title="Pause">⏸</button>
+                                <button class="t-action stop" id="btn-stop" title="Stop">⏹</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="student-instructions">
+                <h3>Waiting?</h3>
+                <ol>
+                    <li>Illustrate</li>
+                    <li>Spelling</li>
+                    <li>Read</li>
+                </ol>
+            </div>
+            
+            <div class="mascot-area"></div>
+
+            <div class="student-actions">
+                <button class="student-btn next-step" id="btn-next-step">Change<br>Level</button>
+                <button class="student-btn ready" id="btn-ready">Ready to<br>Check</button>
+            </div>
+        </div>
+
+        <!-- Center Column: Header & Desks -->
+        <div class="center-column">
+            <header class="slim-header">
+                <div class="project-info">
+                    <h1>Class: 2A1 ELA &nbsp;|&nbsp; <span class="project-title">Writing Project: Clark the Shark</span></h1>
+                </div>
+            </header>
+            
+            <div class="desk-grid" id="classroom-grid">
+                <!-- Desks load here via JavaScript -->
+            </div>
+        </div>
+
+        <!-- Right Side: Full-Height Teacher Sidebar -->
+        <div class="teacher-sidebar">
+            <h3 class="sidebar-title">Teacher Controls</h3>
+            
+            <div class="control-buttons">
+                <button class="ctrl-btn">Set Up Class</button>
+                <button class="ctrl-btn">Reset All</button>
+                <button class="ctrl-btn" id="btn-swap">Swap Seats</button>
+            </div>
+            
+            <div class="bottom-controls">
+                
+                <div class="move-arrows" id="move-arrows">
+                    <button class="arrow-btn" id="btn-move-up">▲</button>
+                    <button class="arrow-btn" id="btn-move-down">▼</button>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="action-btn return">Return to Seat</button>
+                    <button class="action-btn back">Back of Line</button>
+                    <button class="action-btn done">Done</button>
+                </div>
+
+                <h4 class="active-title">Now Checking</h4>
+                <div class="chiclet active-chiclet">
+                    <span>Sachiko 203</span>
+                    <span class="queue-badge">1</span>
+                </div>
+
+                <div class="waiting-queue-box">
+                    <h4>Waiting:</h4>
+                    <ul id="queue-list">
+                        <li class="chiclet"><span>Jimmy 203</span><span class="queue-badge">2</span></li>
+                        <li class="chiclet"><span>Sam 201</span><span class="queue-badge">3</span></li>
+                        <li class="chiclet"><span>Jenny 205</span><span class="queue-badge">4</span></li>
+                        <li class="chiclet"><span>Fred 208</span><span class="queue-badge">5</span></li>
+                        <li class="chiclet"><span>Sarah 202</span><span class="queue-badge">6</span></li>
+                        <li class="chiclet"><span>Mike 210</span><span class="queue-badge">7</span></li>
+                        <li class="chiclet"><span>Leo 204</span><span class="queue-badge">8</span></li>
+                    </ul>
+                    <div class="scroll-indicator">...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Timer Settings Modal -->
+    <div class="settings-modal-overlay" id="settings-overlay">
+        <div class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+            <div class="settings-modal-header">
+                <h3 id="settings-title">Timer Settings</h3>
+                <button class="settings-close" id="settings-close" aria-label="Close">&times;</button>
+            </div>
+
+            <div class="settings-row">
+                <label for="alarm-sound">Alarm sound when time's up</label>
+                <div class="sound-row-inline">
+                    <select id="alarm-sound">
+                        <option value="none">None (silent)</option>
+                        <option value="bell">Bell</option>
+                        <option value="chime">Chime</option>
+                        <option value="buzzer">Buzzer</option>
+                        <option value="rooster">Rooster</option>
+                        <option value="cow">Cow</option>
+                        <option value="train">Train Whistle</option>
+                        <option value="guitar">Guitar</option>
+                    </select>
+                    <button class="settings-test-btn" id="settings-test" type="button">▶ Test</button>
+                </div>
+            </div>
+
+            <div class="settings-row">
+                <label for="alarm-volume">Volume</label>
+                <input type="range" id="alarm-volume" min="0" max="100" value="55">
+            </div>
+
+            <div class="settings-row settings-toggle-row">
+                <label for="warning-toggle">Turn red at 25% time left</label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="warning-toggle" checked>
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
