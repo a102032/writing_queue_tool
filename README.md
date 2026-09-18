@@ -28,6 +28,9 @@ with no internet at all, and picks up any changes you publish the next time it o
 
 The splash appears every time the app is opened. Leaving it always stops the song.
 
+**The first time you open it** the app is empty: no class, no writing project, no
+students. Press **Set Up Class** to make your first one.
+
 **Set Up Class** — enter the class name, the writing project, and the roster.
 One student per line:
 
@@ -42,6 +45,15 @@ without one just gets a neutral desk. Seats fill left to right in the order you 
 
 Saving a roster **keeps the writing stages** of students who are still on it, so fixing a
 typo or adding a late arrival mid-project doesn't wipe the class's work.
+
+**More than one class** — **New Class** in that same box starts another one, and
+**Delete Class** removes the one you are on (you always keep at least one). Switch between
+them with the **Class** dropdown at the top of Teacher Controls. Each class keeps its own
+roster, seating, writing stages and check line, and the app reopens on whichever one you
+used last.
+
+**Welcome Screen** — the button in the top right goes back to the opening screen, so the
+warm-up song can be played again part way through a lesson.
 
 **The check line**
 - **Ready to Check** — tap it, then tap a desk to put that student in line.
@@ -63,8 +75,13 @@ sound, volume, and whether the clock turns red near the end.
 
 Reset All and saving a roster can both be undone from the bar that appears afterwards.
 
-## Where the class is saved
-The roster, seating, writing stages, check line, and the two header labels are saved in the
+## Fitting the screen
+The board never scrolls. However many students are in the class, the desks are resized to
+fit the window, so everyone is visible at once at 100% zoom. A bigger window just means
+bigger desks.
+
+## Where the classes are saved
+Every class you set up — rosters, seating, writing stages and check lines — is saved in the
 browser's local storage on that computer. They survive closing the app and rebooting, but
 they don't travel between computers, and clearing the browser's site data clears them too.
 

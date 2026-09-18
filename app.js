@@ -18,58 +18,38 @@ const stageIcons = {
     done: '<svg viewBox="0 0 128 128"><g><path d="m110.7 54.95c0 5.38 5.25 11.52 3.68 16.37-1.64 5.02-9.55 6.9-12.59 11.08-.27.39-.52.79-.74 1.23-2.26 4.41-2.07 11.37-5.92 14.17-4.18 3.04-11.66-.05-16.69 1.58-1.12.36-2.19 1.01-3.25 1.78-3.59 2.62-7.04 6.74-11.18 6.74s-7.6-4.13-11.18-6.74c-1.06-.77-2.14-1.42-3.25-1.78-5.02-1.64-12.51 1.46-16.69-1.58-3.85-2.79-3.66-9.76-5.92-14.17-.22-.44-.47-.84-.74-1.23-3.04-4.18-10.96-6.06-12.59-11.08-1.57-4.85 3.68-10.99 3.68-16.37s-5.25-11.52-3.68-16.37c1.64-5.02 9.55-6.9 12.59-11.08 3.08-4.23 2.43-12.32 6.66-15.4 4.18-3.04 11.66.05 16.69-1.58 4.83-1.57 9.04-8.52 14.42-8.52s9.59 6.95 14.44 8.53c5.02 1.64 12.51-1.46 16.69 1.58 4.23 3.07 3.59 11.16 6.66 15.4 3.04 4.18 10.96 6.06 12.59 11.08 1.57 4.84-3.68 10.98-3.68 16.36z" fill="#ffe36e"/><circle cx="64" cy="54.95" fill="#ffaa39" r="36.33"/><path d="m66.83 34.89 4.11 8.33c.46.93 1.35 1.58 2.37 1.73l9.2 1.34c2.59.38 3.62 3.55 1.75 5.38l-6.65 6.49c-.74.72-1.08 1.77-.91 2.79l1.57 9.16c.44 2.58-2.26 4.54-4.58 3.32l-8.22-4.32c-.92-.48-2.02-.48-2.93 0l-8.22 4.32c-2.31 1.22-5.02-.75-4.58-3.32l1.57-9.16c.18-1.02-.16-2.07-.91-2.79l-6.65-6.49c-1.87-1.82-.84-5 1.75-5.38l9.2-1.34c1.03-.15 1.91-.79 2.37-1.73l4.11-8.33c1.15-2.35 4.49-2.35 5.65 0z" fill="#fffeeb"/><g fill="#3980e5"><path d="m52.82 101.16-9.49 24.34-12.5-9.87-15.89-1.19 12.01-30.81c2.26 4.41 2.07 11.37 5.92 14.17 4.18 3.04 11.66-.05 16.69 1.58 1.12.36 2.19 1.01 3.26 1.78z"/><path d="m113.05 114.44-15.89 1.19-12.5 9.87-9.49-24.34c1.06-.77 2.14-1.42 3.25-1.78 5.02-1.64 12.51 1.46 16.69-1.58 3.85-2.79 3.66-9.76 5.92-14.17z"/></g></g></svg>'
 };
 
-// Small first-name pool + homerooms used only to seed a placeholder roster
-// until "Set Up Class" (real roster upload) exists.
-const placeholderRoster = [
-    ['Sachiko', 'girl', 203], ['Jimmy', 'boy', 203], ['Alexandria', 'girl', 205], ['Sam', 'boy', 201],
-    ['Jenny', 'girl', 205], ['Christopher', 'boy', 208], ['Mike', 'boy', 210], ['Leo', 'boy', 204],
-    ['Sarah', 'girl', 202], ['Fred', 'boy', 208], ['Maria', 'girl', 201], ['Daniel', 'boy', 206],
-    ['Priya', 'girl', 209], ['Marcus', 'boy', 203], ['Olivia', 'girl', 207], ['Ethan', 'boy', 205],
-    ['Zoe', 'girl', 210], ['Nathan', 'boy', 202], ['Amara', 'girl', 206], ['Lucas', 'boy', 209],
-    ['Isabella', 'girl', 204], ['Ryan', 'boy', 207], ['Grace', 'girl', 208], ['Aiden', 'boy', 201],
-    ['Chloe', 'girl', 203], ['Owen', 'boy', 210], ['Layla', 'girl', 202], ['Henry', 'boy', 206],
-    ['Nora', 'girl', 209], ['Caleb', 'boy', 205]
-];
-
-// Students already lined up when the page loads, in line order
-const initialQueueNames = ['Sachiko', 'Jimmy', 'Sam', 'Jenny', 'Fred', 'Sarah', 'Mike', 'Leo'];
-
-// Spread starting stages across the grid just so the demo shows real variety
-const starterStages = [0, 1, 0, 2, 4, 0, 1, 2, 0, 3, 1, 0, 2, 0, 1, 0, 3, 1, 0, 2, 0, 1, 4, 0, 2, 0, 1, 0, 3, 0];
-
-const desks = placeholderRoster.map(([name, gender, homeroom], i) => ({
-    id: i + 1,
-    name,
-    gender,
-    homeroom,
-    stage: starterStages[i],
-    queue: null   // line position, kept in sync with `queue` below
-}));
+// ============================================
+// Class state
+// ============================================
+// The app opens with nothing set up at all - no class, no writing project and
+// no students. "Set Up Class" in Teacher Controls is how the first one is made.
+const desks = [];
 
 function deskById(id) {
     return desks.find(d => d.id === id);
 }
 
-// ============================================
-// Queue state
-// ============================================
 // The single source of truth for the check line: desk ids in line order.
 // queue[0] is the student being checked right now ("Now Checking"); the
 // rest are the waiting list. Every desk badge and sidebar chiclet is
 // derived from this array, so mutating it + renderQueue() is the only way
 // the line ever changes.
-const queue = initialQueueNames
-    .map(name => desks.find(d => d.name === name))
-    .filter(Boolean)
-    .map(d => d.id);
+const queue = [];
 
-// Shown in the header, edited in the Set Up Class modal
-let classLabel = '2A1 ELA';
-let projectLabel = 'Clark the Shark';
+// Shown in the header, edited in the Set Up Class modal. Empty until set up.
+let classLabel = '';
+let projectLabel = '';
 
 // Declared up here because startup calls loadClassState() long before the
 // class-setup section at the bottom of this file is evaluated.
-const CLASS_KEY = 'writingQueueClass_v1';
+const CLASS_KEY = 'writingQueueClass_v1';      // single class - read only, to migrate
+const CLASSES_KEY = 'writingQueueClasses_v2';  // { activeId, classes: [...] }
+
+// Every class the teacher has set up. The live `desks`/`queue`/labels above
+// are always a working copy of whichever one is active; saveClassState()
+// folds them back into this list.
+let classes = [];
+let activeClassId = null;
 
 // ============================================
 // Desk rendering
@@ -100,6 +80,28 @@ function deskCardHTML(desk) {
 
 function renderDesks() {
     classroomGrid.innerHTML = '';
+
+    // Nothing set up yet: say so and offer the way in, rather than showing
+    // an empty white rectangle that looks broken.
+    if (!desks.length) {
+        classroomGrid.classList.add('empty');
+        const empty = document.createElement('div');
+        empty.className = 'grid-empty';
+        empty.innerHTML =
+            '<h2>No class set up yet</h2>' +
+            '<p>Add your students to get started. You can set up more than one class and switch between them.</p>';
+        const btn = document.createElement('button');
+        btn.className = 'splash-btn enter small';
+        btn.type = 'button';
+        btn.textContent = 'Set Up Class';
+        btn.addEventListener('click', openClassSetup);
+        empty.appendChild(btn);
+        classroomGrid.appendChild(empty);
+        updateArmableState();
+        return;
+    }
+
+    classroomGrid.classList.remove('empty');
     desks.forEach(desk => {
         const el = document.createElement('div');
         el.className = 'desk ' + desk.gender;
@@ -108,7 +110,48 @@ function renderDesks() {
         el.addEventListener('click', () => onDeskTap(desk.id));
         classroomGrid.appendChild(el);
     });
+    layoutDeskGrid();
     updateArmableState();
+}
+
+// The board must never scroll, so the desks are sized to fit rather than the
+// box being scrolled. For each possible column count work out how big a card
+// could be - limited by the width of a column, and by the height of the rows
+// that column count implies - and keep whichever count allows the biggest
+// card. Cards are 4:3, which is what converts an available height into a width.
+const MAX_DESK_W = 195;
+function layoutDeskGrid() {
+    const n = desks.length;
+    if (!n) return;
+
+    const cs = getComputedStyle(classroomGrid);
+    const gap = parseFloat(cs.rowGap) || 8;
+    const availW = classroomGrid.clientWidth
+        - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const availH = classroomGrid.clientHeight
+        - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (!(availW > 0) || !(availH > 0)) return;   // not laid out yet
+
+    let bestCols = 1;
+    let bestW = 0;
+    for (let cols = 1; cols <= n; cols++) {
+        const rows = Math.ceil(n / cols);
+        const byWidth = (availW - gap * (cols - 1)) / cols;
+        const byHeight = ((availH - gap * (rows - 1)) / rows) * (4 / 3);
+        const w = Math.min(byWidth, byHeight);
+        if (w > bestW) { bestW = w; bestCols = cols; }
+    }
+
+    const cardW = Math.max(1, Math.min(bestW, MAX_DESK_W));
+    classroomGrid.style.setProperty('--cols', String(bestCols));
+    classroomGrid.style.setProperty('--card-w', cardW.toFixed(2) + 'px');
+}
+
+// Re-fit whenever the window, and therefore the grid box, changes size.
+if (window.ResizeObserver) {
+    new ResizeObserver(() => layoutDeskGrid()).observe(classroomGrid);
+} else {
+    window.addEventListener('resize', layoutDeskGrid);
 }
 
 function updateArmableState() {
@@ -1049,10 +1092,54 @@ const classNameInput = document.getElementById('class-name-input');
 const projectTitleInput = document.getElementById('project-title-input');
 const rosterInput = document.getElementById('roster-input');
 const rosterHint = document.getElementById('roster-hint');
+const classSwitcher = document.getElementById('class-switcher');
+const btnNewClass = document.getElementById('class-new');
+const btnDeleteClass = document.getElementById('class-delete');
+const btnShowSplash = document.getElementById('btn-show-splash');
 
 function renderHeader() {
-    document.getElementById('class-name').textContent = classLabel;
-    document.getElementById('project-title').textContent = projectLabel;
+    const nameEl = document.getElementById('class-name');
+    const projEl = document.getElementById('project-title');
+    nameEl.textContent = classLabel || 'not set up yet';
+    nameEl.classList.toggle('unset', !classLabel);
+    projEl.textContent = projectLabel || 'none yet';
+    projEl.classList.toggle('unset', !projectLabel);
+}
+
+function classOptionLabel(rec) {
+    if (!rec.classLabel && !rec.projectLabel) return 'Untitled class';
+    if (!rec.projectLabel) return rec.classLabel;
+    if (!rec.classLabel) return rec.projectLabel;
+    return rec.classLabel + ' \u2014 ' + rec.projectLabel;
+}
+
+function renderClassSwitcher() {
+    classSwitcher.innerHTML = '';
+    classes.forEach(rec => {
+        const opt = document.createElement('option');
+        opt.value = rec.id;
+        // Show the live labels for the class being edited, not the last saved ones
+        opt.textContent = rec.id === activeClassId
+            ? classOptionLabel({ classLabel: classLabel, projectLabel: projectLabel })
+            : classOptionLabel(rec);
+        opt.selected = rec.id === activeClassId;
+        classSwitcher.appendChild(opt);
+    });
+    classSwitcher.disabled = classes.length < 2;
+    // Deleting the last class would leave the board with nothing to show
+    if (btnDeleteClass) btnDeleteClass.disabled = classes.length < 2;
+}
+
+function switchToClass(id) {
+    if (!id || id === activeClassId) return;
+    const target = classes.find(c => c.id === id);
+    if (!target) return;
+    saveClassState();        // bank the class we are leaving
+    hideUndo();              // that snapshot belongs to the other class
+    activeClassId = id;
+    applyState(target);
+    renderAll();
+    saveClassState();
 }
 
 // --- Persistence -------------------------------------------------------
@@ -1070,64 +1157,124 @@ function serializeState() {
     };
 }
 
-// Load a state object into the live app. Shared by startup, undo, and any
-// future import, so saved data is validated in exactly one place.
-// Returns false and changes nothing if the object is unusable.
-function applyState(saved) {
-    if (!saved || !Array.isArray(saved.desks)) return false;
+function makeClassId() {
+    return 'cls-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 7);
+}
 
-    const restored = saved.desks
+// Validate one saved class into a clean record, or null if it is unusable.
+// Every path that reads stored data goes through here, so a corrupt stage,
+// an unknown gender or a line entry for a student who has left can never
+// reach the renderer.
+function normalizeClass(saved) {
+    if (!saved || !Array.isArray(saved.desks)) return null;
+
+    const desksOut = saved.desks
         .filter(d => d && typeof d.name === 'string' && d.name.trim())
         .map(d => ({
             id: d.id,
             name: d.name,
             gender: (d.gender === 'boy' || d.gender === 'girl') ? d.gender : 'neutral',
             homeroom: d.homeroom == null ? '' : d.homeroom,
-            // A stage outside the current range would break rendering
-            stage: (Number.isInteger(d.stage) && d.stage >= 0 && d.stage < stages.length) ? d.stage : 0,
-            queue: null
+            stage: (Number.isInteger(d.stage) && d.stage >= 0 && d.stage < stages.length) ? d.stage : 0
         }));
-    if (!restored.length) return false;
 
-    desks.length = 0;
-    restored.forEach(d => desks.push(d));
-
-    // Drop any line entry whose student is no longer on the roster
-    const validIds = new Set(desks.map(d => d.id));
-    const savedQueue = Array.isArray(saved.queue) ? saved.queue : [];
-    queue.length = 0;
-    savedQueue.forEach(id => {
-        if (validIds.has(id) && queue.indexOf(id) === -1) queue.push(id);
+    const validIds = new Set(desksOut.map(d => d.id));
+    const queueOut = [];
+    (Array.isArray(saved.queue) ? saved.queue : []).forEach(id => {
+        if (validIds.has(id) && queueOut.indexOf(id) === -1) queueOut.push(id);
     });
 
-    if (typeof saved.classLabel === 'string' && saved.classLabel) classLabel = saved.classLabel;
-    if (typeof saved.projectLabel === 'string' && saved.projectLabel) projectLabel = saved.projectLabel;
+    return {
+        id: (typeof saved.id === 'string' && saved.id) ? saved.id : makeClassId(),
+        classLabel: typeof saved.classLabel === 'string' ? saved.classLabel : '',
+        projectLabel: typeof saved.projectLabel === 'string' ? saved.projectLabel : '',
+        desks: desksOut,
+        queue: queueOut
+    };
+}
+
+// Load a class record into the live working copy. Shared by startup, class
+// switching and undo. Returns false and changes nothing if it is unusable.
+function applyState(saved) {
+    const rec = normalizeClass(saved);
+    if (!rec) return false;
+
+    desks.length = 0;
+    rec.desks.forEach(d => desks.push({
+        id: d.id, name: d.name, gender: d.gender,
+        homeroom: d.homeroom, stage: d.stage, queue: null
+    }));
+    queue.length = 0;
+    rec.queue.forEach(id => queue.push(id));
+
+    classLabel = rec.classLabel;
+    projectLabel = rec.projectLabel;
     return true;
 }
 
+function currentClassRecord() {
+    const rec = serializeState();
+    rec.id = activeClassId;
+    return rec;
+}
+
 function saveClassState() {
-    const payload = JSON.stringify(serializeState());
+    // Fold the live working copy back into the active class, then persist all
+    const rec = currentClassRecord();
+    const i = classes.findIndex(c => c.id === activeClassId);
+    if (i === -1) classes.push(rec); else classes[i] = rec;
+
+    const payload = JSON.stringify({ activeId: activeClassId, classes: classes });
     try {
-        localStorage.setItem(CLASS_KEY, payload);
+        localStorage.setItem(CLASSES_KEY, payload);
     } catch (e) { /* storage blocked or full - not persisting is survivable */ }
 }
 
-function loadClassState() {
+// First ever run: one empty class, waiting to be set up
+function seedDefaultClass() {
+    activeClassId = makeClassId();
+    classLabel = '';
+    projectLabel = '';
+    desks.length = 0;
+    queue.length = 0;
+    classes = [currentClassRecord()];
+}
+
+function readStored(key) {
     let raw;
     try {
-        raw = localStorage.getItem(CLASS_KEY);
+        raw = localStorage.getItem(key);
     } catch (e) {
-        return;   // storage blocked - start from the placeholder class
+        return null;   // storage blocked
     }
-    if (!raw) return;
-
-    let saved;
+    if (!raw) return null;
     try {
-        saved = JSON.parse(raw);   // saved data can be corrupt or from an older shape
+        return JSON.parse(raw);   // saved data can be corrupt or from an older shape
     } catch (e) {
+        return null;
+    }
+}
+
+function loadClassState() {
+    let envelope = readStored(CLASSES_KEY);
+
+    // A class saved by the single-class version becomes the first class here
+    if (!envelope || !Array.isArray(envelope.classes)) {
+        const migrated = normalizeClass(readStored(CLASS_KEY));
+        envelope = migrated ? { activeId: migrated.id, classes: [migrated] } : null;
+    }
+
+    const list = (envelope && Array.isArray(envelope.classes)) ? envelope.classes : [];
+    classes = list.map(normalizeClass).filter(Boolean);
+    if (!classes.length) {
+        seedDefaultClass();
         return;
     }
-    applyState(saved);
+
+    const wanted = envelope && envelope.activeId;
+    const active = classes.find(c => c.id === wanted) || classes[0];
+    activeClassId = active.id;
+    applyState(active);
 }
 
 // Redraw everything from the current state. Used after any change that can
@@ -1136,6 +1283,7 @@ function renderAll() {
     selectedQueueId = null;
     setArmedMode(null);
     renderHeader();
+    renderClassSwitcher();
     renderDesks();
     renderQueue();
 }
@@ -1265,8 +1413,11 @@ function openClassSetup() {
     classNameInput.value = classLabel;
     projectTitleInput.value = projectLabel;
     rosterInput.value = rosterToText();
-    rosterHint.textContent = 'Seats fill left to right, in this order.';
+    rosterHint.textContent = desks.length
+        ? 'Seats fill left to right, in this order.'
+        : 'Type this class\u2019s students, one per line.';
     rosterHint.classList.remove('error');
+    btnDeleteClass.disabled = classes.length < 2;
     classOverlay.classList.add('open');
     classNameInput.focus();
 }
@@ -1285,8 +1436,66 @@ document.addEventListener('keydown', function (e) {
     if (e.key === 'Escape' && classOverlay.classList.contains('open')) closeClassSetup();
 });
 
+classSwitcher.addEventListener('change', function () {
+    switchToClass(classSwitcher.value);
+});
+
+// A brand-new class starts empty so the teacher can type straight into the
+// roster box; it only becomes a real class once they save one.
+btnNewClass.addEventListener('click', function () {
+    saveClassState();
+    const rec = {
+        id: makeClassId(),
+        classLabel: '',
+        projectLabel: '',
+        desks: [],
+        queue: []
+    };
+    classes.push(rec);
+    activeClassId = rec.id;
+    applyState(rec);
+    renderAll();
+    saveClassState();
+
+    classNameInput.value = '';
+    projectTitleInput.value = '';
+    rosterInput.value = '';
+    rosterHint.textContent = 'Type this class\u2019s students, one per line.';
+    rosterHint.classList.remove('error');
+    classNameInput.focus();
+});
+
+btnDeleteClass.addEventListener('click', function () {
+    if (classes.length < 2) return;   // there has to be a class to fall back to
+    const doomed = classes.find(c => c.id === activeClassId);
+    const name = doomed ? doomed.classLabel : classLabel;
+    askConfirm(
+        'Delete Class',
+        'Delete "' + name + '" and everything saved with it \u2014 its roster, writing stages and check line? This cannot be undone.',
+        'Delete',
+        function () {
+            const i = classes.findIndex(c => c.id === activeClassId);
+            if (i === -1) return;
+            classes.splice(i, 1);
+            const next = classes[Math.min(i, classes.length - 1)];
+            activeClassId = next.id;
+            applyState(next);
+            hideUndo();
+            renderAll();
+            saveClassState();
+            openClassSetup();   // reopen showing whichever class we landed on
+        }
+    );
+});
+
 classSaveBtn.addEventListener('click', function () {
     const students = parseRoster(rosterInput.value);
+    if (!classNameInput.value.trim()) {
+        rosterHint.textContent = 'Give the class a name first.';
+        rosterHint.classList.add('error');
+        classNameInput.focus();
+        return;
+    }
     if (!students.length) {
         rosterHint.textContent = 'Add at least one student before saving.';
         rosterHint.classList.add('error');
@@ -1294,11 +1503,16 @@ classSaveBtn.addEventListener('click', function () {
         return;
     }
     const before = serializeState();
-    classLabel = classNameInput.value.trim() || classLabel;
-    projectLabel = projectTitleInput.value.trim() || projectLabel;
+    classLabel = classNameInput.value.trim();
+    projectLabel = projectTitleInput.value.trim();
     applyRoster(students);
     closeClassSetup();
     offerUndo('Class updated.', before);
+});
+
+// Back to the welcome screen, mainly so the song can be played again
+btnShowSplash.addEventListener('click', function () {
+    showSplash();
 });
 
 // --- Reset All ---------------------------------------------------------
@@ -1471,6 +1685,15 @@ function enterApp() {
     else setTimeout(finish, 450);
 }
 
+// Bring the welcome screen back, so the song can be played again mid-lesson
+function showSplash() {
+    splashDismissed = false;
+    splash.classList.remove('hidden', 'leaving');
+    if (!splashSky.childElementCount) startSplashSky();
+    showSplashClass();   // the class may have changed since it was last shown
+    btnEnterApp.focus();
+}
+
 btnEnterApp.addEventListener('click', enterApp);
 btnSongDone.addEventListener('click', enterApp);
 btnCloseSong.addEventListener('click', closeSong);
@@ -1511,4 +1734,5 @@ document.addEventListener('keydown', function (e) {
 animateSplashTitle();
 startSplashSky();
 showSplashClass();
+renderClassSwitcher();   // safe here: the class-setup elements exist by now
 btnEnterApp.focus();
