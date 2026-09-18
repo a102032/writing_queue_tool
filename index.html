@@ -151,6 +151,10 @@
                 <div class="project-info">
                     <h1>Class: <span id="class-name">2A1 ELA</span> &nbsp;|&nbsp; <span class="project-title">Writing Project: <span id="project-title">Clark the Shark</span></span></h1>
                 </div>
+                <button class="header-btn" id="btn-show-splash" type="button"
+                        title="Show the welcome screen and warm-up song">
+                    <span aria-hidden="true">&#9834;</span> Welcome Screen
+                </button>
             </header>
             
             <div class="desk-grid" id="classroom-grid">
@@ -161,7 +165,12 @@
         <!-- Right Side: Full-Height Teacher Sidebar -->
         <div class="teacher-sidebar">
             <h3 class="sidebar-title">Teacher Controls</h3>
-            
+
+            <div class="class-switch">
+                <label for="class-switcher">Class</label>
+                <select id="class-switcher"></select>
+            </div>
+
             <div class="control-buttons">
                 <button class="ctrl-btn" id="btn-setup-class">Set Up Class</button>
                 <button class="ctrl-btn" id="btn-reset-all">Reset All</button>
@@ -238,6 +247,10 @@
                 <p class="roster-hint" id="roster-hint">Seats fill left to right, in this order.</p>
             </div>
 
+            <div class="modal-actions secondary">
+                <button class="modal-btn danger-ghost" id="class-delete" type="button">Delete Class</button>
+                <button class="modal-btn neutral" id="class-new" type="button">New Class</button>
+            </div>
             <div class="modal-actions">
                 <button class="modal-btn cancel" id="class-cancel" type="button">Cancel</button>
                 <button class="modal-btn save" id="class-save" type="button">Save Class</button>
