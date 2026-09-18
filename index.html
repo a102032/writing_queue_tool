@@ -4,7 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grade 2 Writing Queue</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="description" content="A classroom writing-conference queue and timer for Grade 2.">
+    <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
@@ -125,6 +133,26 @@
         </div>
     </div>
 
+    <!-- Undo bar for destructive actions -->
+    <div class="undo-toast" id="undo-toast" role="status" aria-live="polite">
+        <span id="undo-message"></span>
+        <button class="undo-btn" id="undo-btn" type="button">Undo</button>
+    </div>
+
+    <!-- Confirm dialog (in-app, so it still works in an installed window) -->
+    <div class="settings-modal-overlay" id="confirm-overlay">
+        <div class="settings-modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div class="settings-modal-header">
+                <h3 id="confirm-title">Are you sure?</h3>
+            </div>
+            <p class="confirm-text" id="confirm-text"></p>
+            <div class="modal-actions">
+                <button class="modal-btn cancel" id="confirm-no" type="button">Cancel</button>
+                <button class="modal-btn danger" id="confirm-yes" type="button">Yes</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Set Up Class Modal (roster + class/project names) -->
     <div class="settings-modal-overlay" id="class-overlay">
         <div class="settings-modal class-modal" role="dialog" aria-modal="true" aria-labelledby="class-setup-title">
@@ -197,5 +225,12 @@
     </div>
 
     <script src="app.js"></script>
+    <script>
+        // Offline support + "install this as an app". Needs http(s), so opening
+        // the file directly from disk simply skips it and the app still runs.
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+        }
+    </script>
 </body>
 </html>

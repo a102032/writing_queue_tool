@@ -1058,8 +1058,8 @@ function renderHeader() {
 // --- Persistence -------------------------------------------------------
 // localStorage can throw (private browsing, blocked storage). The tool still
 // works fine without it, so every access is best-effort.
-function saveClassState() {
-    const payload = JSON.stringify({
+function serializeState() {
+    return {
         classLabel: classLabel,
         projectLabel: projectLabel,
         desks: desks.map(d => ({
@@ -1067,7 +1067,46 @@ function saveClassState() {
             homeroom: d.homeroom, stage: d.stage
         })),
         queue: queue.slice()
+    };
+}
+
+// Load a state object into the live app. Shared by startup, undo, and any
+// future import, so saved data is validated in exactly one place.
+// Returns false and changes nothing if the object is unusable.
+function applyState(saved) {
+    if (!saved || !Array.isArray(saved.desks)) return false;
+
+    const restored = saved.desks
+        .filter(d => d && typeof d.name === 'string' && d.name.trim())
+        .map(d => ({
+            id: d.id,
+            name: d.name,
+            gender: (d.gender === 'boy' || d.gender === 'girl') ? d.gender : 'neutral',
+            homeroom: d.homeroom == null ? '' : d.homeroom,
+            // A stage outside the current range would break rendering
+            stage: (Number.isInteger(d.stage) && d.stage >= 0 && d.stage < stages.length) ? d.stage : 0,
+            queue: null
+        }));
+    if (!restored.length) return false;
+
+    desks.length = 0;
+    restored.forEach(d => desks.push(d));
+
+    // Drop any line entry whose student is no longer on the roster
+    const validIds = new Set(desks.map(d => d.id));
+    const savedQueue = Array.isArray(saved.queue) ? saved.queue : [];
+    queue.length = 0;
+    savedQueue.forEach(id => {
+        if (validIds.has(id) && queue.indexOf(id) === -1) queue.push(id);
     });
+
+    if (typeof saved.classLabel === 'string' && saved.classLabel) classLabel = saved.classLabel;
+    if (typeof saved.projectLabel === 'string' && saved.projectLabel) projectLabel = saved.projectLabel;
+    return true;
+}
+
+function saveClassState() {
+    const payload = JSON.stringify(serializeState());
     try {
         localStorage.setItem(CLASS_KEY, payload);
     } catch (e) { /* storage blocked or full - not persisting is survivable */ }
@@ -1088,34 +1127,17 @@ function loadClassState() {
     } catch (e) {
         return;
     }
-    if (!saved || !Array.isArray(saved.desks)) return;
+    applyState(saved);
+}
 
-    const restored = saved.desks
-        .filter(d => d && typeof d.name === 'string' && d.name.trim())
-        .map(d => ({
-            id: d.id,
-            name: d.name,
-            gender: (d.gender === 'boy' || d.gender === 'girl') ? d.gender : 'neutral',
-            homeroom: d.homeroom == null ? '' : d.homeroom,
-            // A stage outside the current range would break rendering
-            stage: (Number.isInteger(d.stage) && d.stage >= 0 && d.stage < stages.length) ? d.stage : 0,
-            queue: null
-        }));
-    if (!restored.length) return;
-
-    desks.length = 0;
-    restored.forEach(d => desks.push(d));
-
-    // Drop any saved line entry whose student is no longer on the roster
-    const validIds = new Set(desks.map(d => d.id));
-    const savedQueue = Array.isArray(saved.queue) ? saved.queue : [];
-    queue.length = 0;
-    savedQueue.forEach(id => {
-        if (validIds.has(id) && queue.indexOf(id) === -1) queue.push(id);
-    });
-
-    if (typeof saved.classLabel === 'string' && saved.classLabel) classLabel = saved.classLabel;
-    if (typeof saved.projectLabel === 'string' && saved.projectLabel) projectLabel = saved.projectLabel;
+// Redraw everything from the current state. Used after any change that can
+// move students between seats or rewrite the roster.
+function renderAll() {
+    selectedQueueId = null;
+    setArmedMode(null);
+    renderHeader();
+    renderDesks();
+    renderQueue();
 }
 
 // --- Seat swapping -----------------------------------------------------
@@ -1235,11 +1257,7 @@ function applyRoster(students) {
     queue.length = 0;
     rebuilt.forEach(id => queue.push(id));
 
-    selectedQueueId = null;
-    setArmedMode(null);
-    renderHeader();
-    renderDesks();
-    renderQueue();
+    renderAll();
 }
 
 // --- Set Up Class modal ------------------------------------------------
@@ -1275,23 +1293,93 @@ classSaveBtn.addEventListener('click', function () {
         rosterInput.focus();
         return;
     }
+    const before = serializeState();
     classLabel = classNameInput.value.trim() || classLabel;
     projectLabel = projectTitleInput.value.trim() || projectLabel;
     applyRoster(students);
     closeClassSetup();
+    offerUndo('Class updated.', before);
 });
 
 // --- Reset All ---------------------------------------------------------
 btnResetAll.addEventListener('click', function () {
-    const ok = window.confirm(
-        'Reset every student to Pre-Writing and clear the check line?\n\n' +
-        'The class roster is kept.'
+    askConfirm(
+        'Reset All',
+        'Put every student back to Pre-Writing and clear the check line? The class roster is kept.',
+        'Reset',
+        function () {
+            const before = serializeState();
+            desks.forEach(d => { d.stage = 0; });
+            queue.length = 0;
+            renderAll();
+            offerUndo('Class reset to Pre-Writing.', before);
+        }
     );
-    if (!ok) return;
-    desks.forEach(d => { d.stage = 0; });
-    queue.length = 0;
-    selectedQueueId = null;
-    setArmedMode(null);
-    renderDesks();
-    renderQueue();
+});
+
+// --- Confirm dialog ----------------------------------------------------
+// An in-app dialog rather than window.confirm: native dialogs look out of
+// place in an installed app window and some platforms suppress them.
+const confirmOverlay = document.getElementById('confirm-overlay');
+const confirmTitle = document.getElementById('confirm-title');
+const confirmText = document.getElementById('confirm-text');
+const confirmYes = document.getElementById('confirm-yes');
+const confirmNo = document.getElementById('confirm-no');
+let confirmAction = null;
+
+function askConfirm(title, message, confirmLabel, onConfirm) {
+    confirmTitle.textContent = title;
+    confirmText.textContent = message;
+    confirmYes.textContent = confirmLabel;
+    confirmAction = onConfirm;
+    confirmOverlay.classList.add('open');
+    confirmNo.focus();
+}
+
+function closeConfirm() {
+    confirmOverlay.classList.remove('open');
+    confirmAction = null;
+}
+
+confirmYes.addEventListener('click', function () {
+    const act = confirmAction;
+    closeConfirm();
+    if (act) act();
+});
+confirmNo.addEventListener('click', closeConfirm);
+confirmOverlay.addEventListener('click', function (e) {
+    if (e.target === confirmOverlay) closeConfirm();
+});
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && confirmOverlay.classList.contains('open')) closeConfirm();
+});
+
+// --- Undo ---------------------------------------------------------------
+// Reset All and saving a roster can throw away a morning's work, so each one
+// keeps a snapshot the teacher can put back for a few seconds afterwards.
+const undoToast = document.getElementById('undo-toast');
+const undoMessage = document.getElementById('undo-message');
+const undoBtn = document.getElementById('undo-btn');
+const UNDO_TIMEOUT_MS = 15000;
+let undoSnapshot = null;
+let undoTimer = null;
+
+function offerUndo(message, snapshot) {
+    undoSnapshot = snapshot;
+    undoMessage.textContent = message;
+    undoToast.classList.add('show');
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(hideUndo, UNDO_TIMEOUT_MS);
+}
+
+function hideUndo() {
+    clearTimeout(undoTimer);
+    undoToast.classList.remove('show');
+    undoSnapshot = null;
+}
+
+undoBtn.addEventListener('click', function () {
+    if (!undoSnapshot) return;
+    if (applyState(undoSnapshot)) renderAll();
+    hideUndo();
 });
