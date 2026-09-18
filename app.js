@@ -63,14 +63,23 @@ const queue = initialQueueNames
     .filter(Boolean)
     .map(d => d.id);
 
+// Shown in the header, edited in the Set Up Class modal
+let classLabel = '2A1 ELA';
+let projectLabel = 'Clark the Shark';
+
+// Declared up here because startup calls loadClassState() long before the
+// class-setup section at the bottom of this file is evaluated.
+const CLASS_KEY = 'writingQueueClass_v1';
+
 // ============================================
 // Desk rendering
 // ============================================
 const classroomGrid = document.getElementById('classroom-grid');
-// Only one arm mode at a time: tapping a desk either bumps its writing
-// stage (Change Level) or puts that student in the check line (Ready to Check).
-let changeLevelArmed = false;
-let readyArmed = false;
+// What a desk tap does right now: nothing (null), bump its writing stage
+// ('level'), put the student in the check line ('ready'), or pick it for a
+// seat swap ('swap'). Exactly one mode is armed at a time.
+let armedMode = null;
+let swapFirstId = null;
 
 function deskCardHTML(desk) {
     const stage = stages[desk.stage];
@@ -103,19 +112,29 @@ function renderDesks() {
 }
 
 function updateArmableState() {
-    const armed = changeLevelArmed || readyArmed;
     document.querySelectorAll('.desk').forEach(el => {
-        el.classList.toggle('armable', armed);
+        el.classList.toggle('armable', armedMode !== null);
     });
+    if (swapFirstId !== null) {
+        const el = document.getElementById('desk-' + swapFirstId);
+        if (el) el.classList.add('swap-pick');
+    }
+}
+
+// Tapping the button of the live mode disarms it; any other button switches.
+function setArmedMode(mode) {
+    armedMode = (mode === armedMode) ? null : mode;
+    if (armedMode !== 'swap') clearSwapPick();
+    btnChangeLevel.classList.toggle('armed', armedMode === 'level');
+    btnReady.classList.toggle('armed', armedMode === 'ready');
+    btnSwap.classList.toggle('armed', armedMode === 'swap');
+    updateArmableState();
 }
 
 function onDeskTap(id) {
-    if (readyArmed) {
-        addToQueue(id);
-        return;
-    }
-    if (!changeLevelArmed) return;
-    advanceDeskStage(id);
+    if (armedMode === 'ready') addToQueue(id);
+    else if (armedMode === 'level') advanceDeskStage(id);
+    else if (armedMode === 'swap') pickForSwap(id);
 }
 
 function advanceDeskStage(id) {
@@ -145,6 +164,8 @@ function advanceDeskStage(id) {
         confettiRain();
         playCelebrationSound();
     }
+
+    saveClassState();
 }
 
 // ============================================
@@ -290,14 +311,11 @@ function playCelebrationSound() {
 // Change Level button
 // ============================================
 const btnChangeLevel = document.getElementById('btn-next-step');
-btnChangeLevel.addEventListener('click', () => {
-    changeLevelArmed = !changeLevelArmed;
-    if (changeLevelArmed) setReadyArmed(false);
-    btnChangeLevel.classList.toggle('armed', changeLevelArmed);
-    updateArmableState();
-});
+btnChangeLevel.addEventListener('click', () => setArmedMode('level'));
 
+loadClassState();
 syncDeskQueueNumbers();
+renderHeader();
 renderDesks();
 
 // ============================================
@@ -882,6 +900,7 @@ function renderQueue() {
     btnDone.disabled = !hasTarget;
 
     updateDeskBadges();
+    saveClassState();
 }
 
 // Actions act on the selected chiclet, or on the student being checked
@@ -960,19 +979,7 @@ btnDone.addEventListener('click', () => {
 // ============================================
 // Ready to Check button
 // ============================================
-function setReadyArmed(on) {
-    readyArmed = on;
-    btnReady.classList.toggle('armed', readyArmed);
-}
-
-btnReady.addEventListener('click', () => {
-    setReadyArmed(!readyArmed);
-    if (readyArmed && changeLevelArmed) {
-        changeLevelArmed = false;
-        btnChangeLevel.classList.remove('armed');
-    }
-    updateArmableState();
-});
+btnReady.addEventListener('click', () => setArmedMode('ready'));
 
 renderQueue();
 
@@ -1026,4 +1033,265 @@ warningToggle.addEventListener('change', function () {
     settings.warningEnabled = warningToggle.checked;
     saveSettings();
     updateWarningState();
+});
+
+// ============================================
+// Class setup: roster, seat swapping, persistence
+// ============================================
+const btnSwap = document.getElementById('btn-swap');
+const btnSetupClass = document.getElementById('btn-setup-class');
+const btnResetAll = document.getElementById('btn-reset-all');
+const classOverlay = document.getElementById('class-overlay');
+const classCloseBtn = document.getElementById('class-close');
+const classCancelBtn = document.getElementById('class-cancel');
+const classSaveBtn = document.getElementById('class-save');
+const classNameInput = document.getElementById('class-name-input');
+const projectTitleInput = document.getElementById('project-title-input');
+const rosterInput = document.getElementById('roster-input');
+const rosterHint = document.getElementById('roster-hint');
+
+function renderHeader() {
+    document.getElementById('class-name').textContent = classLabel;
+    document.getElementById('project-title').textContent = projectLabel;
+}
+
+// --- Persistence -------------------------------------------------------
+// localStorage can throw (private browsing, blocked storage). The tool still
+// works fine without it, so every access is best-effort.
+function saveClassState() {
+    const payload = JSON.stringify({
+        classLabel: classLabel,
+        projectLabel: projectLabel,
+        desks: desks.map(d => ({
+            id: d.id, name: d.name, gender: d.gender,
+            homeroom: d.homeroom, stage: d.stage
+        })),
+        queue: queue.slice()
+    });
+    try {
+        localStorage.setItem(CLASS_KEY, payload);
+    } catch (e) { /* storage blocked or full - not persisting is survivable */ }
+}
+
+function loadClassState() {
+    let raw;
+    try {
+        raw = localStorage.getItem(CLASS_KEY);
+    } catch (e) {
+        return;   // storage blocked - start from the placeholder class
+    }
+    if (!raw) return;
+
+    let saved;
+    try {
+        saved = JSON.parse(raw);   // saved data can be corrupt or from an older shape
+    } catch (e) {
+        return;
+    }
+    if (!saved || !Array.isArray(saved.desks)) return;
+
+    const restored = saved.desks
+        .filter(d => d && typeof d.name === 'string' && d.name.trim())
+        .map(d => ({
+            id: d.id,
+            name: d.name,
+            gender: (d.gender === 'boy' || d.gender === 'girl') ? d.gender : 'neutral',
+            homeroom: d.homeroom == null ? '' : d.homeroom,
+            // A stage outside the current range would break rendering
+            stage: (Number.isInteger(d.stage) && d.stage >= 0 && d.stage < stages.length) ? d.stage : 0,
+            queue: null
+        }));
+    if (!restored.length) return;
+
+    desks.length = 0;
+    restored.forEach(d => desks.push(d));
+
+    // Drop any saved line entry whose student is no longer on the roster
+    const validIds = new Set(desks.map(d => d.id));
+    const savedQueue = Array.isArray(saved.queue) ? saved.queue : [];
+    queue.length = 0;
+    savedQueue.forEach(id => {
+        if (validIds.has(id) && queue.indexOf(id) === -1) queue.push(id);
+    });
+
+    if (typeof saved.classLabel === 'string' && saved.classLabel) classLabel = saved.classLabel;
+    if (typeof saved.projectLabel === 'string' && saved.projectLabel) projectLabel = saved.projectLabel;
+}
+
+// --- Seat swapping -----------------------------------------------------
+function clearSwapPick() {
+    if (swapFirstId === null) return;
+    const el = document.getElementById('desk-' + swapFirstId);
+    if (el) el.classList.remove('swap-pick');
+    swapFirstId = null;
+}
+
+function pickForSwap(id) {
+    if (swapFirstId === null) {
+        swapFirstId = id;
+        const el = document.getElementById('desk-' + id);
+        if (el) el.classList.add('swap-pick');
+        return;
+    }
+    if (swapFirstId === id) {   // tapped the same desk again: cancel the pick
+        clearSwapPick();
+        return;
+    }
+
+    const a = desks.findIndex(d => d.id === swapFirstId);
+    const b = desks.findIndex(d => d.id === id);
+    clearSwapPick();
+    if (a === -1 || b === -1) return;
+
+    // `desks` order is seating order and each id belongs to a student, so
+    // swapping the two entries moves the students without disturbing the
+    // check line - a queued student keeps their place after changing seats.
+    const tmp = desks[a];
+    desks[a] = desks[b];
+    desks[b] = tmp;
+
+    renderDesks();
+    renderQueue();
+    setArmedMode(null);   // one swap per arm, so a stray tap can't reshuffle the room
+}
+
+btnSwap.addEventListener('click', () => setArmedMode('swap'));
+
+// --- Roster parsing ----------------------------------------------------
+// One student per line: "Name, homeroom, girl/boy". Homeroom and gender are
+// optional; gender only decides the desk colour, so anything unrecognised
+// falls back to a neutral desk rather than rejecting the line.
+function parseRoster(text) {
+    const students = [];
+    text.split('\n').forEach(line => {
+        const parts = line.split(',').map(part => part.trim());
+        const name = parts[0];
+        if (!name) return;
+        const g = (parts[2] || '').toLowerCase();
+        let gender = 'neutral';
+        if (g === 'g' || g === 'girl' || g === 'f' || g === 'female') gender = 'girl';
+        else if (g === 'b' || g === 'boy' || g === 'm' || g === 'male') gender = 'boy';
+        students.push({ name: name, homeroom: parts[1] || '', gender: gender });
+    });
+    return students;
+}
+
+function rosterToText() {
+    return desks.map(d => {
+        const bits = [d.name, d.homeroom];
+        if (d.gender !== 'neutral') bits.push(d.gender);
+        return bits.join(', ');
+    }).join('\n');
+}
+
+function studentKey(name, homeroom) {
+    return name.toLowerCase() + '|' + String(homeroom).toLowerCase();
+}
+
+function applyRoster(students) {
+    // Carry writing stages over for students who are still on the roster, so
+    // fixing a typo or adding a late arrival doesn't wipe the class's work.
+    const previous = new Map();
+    desks.forEach(d => {
+        const key = studentKey(d.name, d.homeroom);
+        if (!previous.has(key)) previous.set(key, []);
+        previous.get(key).push(d);
+    });
+    const takePrevious = key => {
+        const bucket = previous.get(key);
+        return (bucket && bucket.length) ? bucket.shift() : null;
+    };
+
+    const queuedKeys = queue
+        .map(id => deskById(id))
+        .filter(Boolean)
+        .map(d => studentKey(d.name, d.homeroom));
+
+    desks.length = 0;
+    students.forEach((student, i) => {
+        const prev = takePrevious(studentKey(student.name, student.homeroom));
+        desks.push({
+            id: i + 1,
+            name: student.name,
+            gender: student.gender,
+            homeroom: student.homeroom,
+            stage: prev ? prev.stage : 0,
+            queue: null
+        });
+    });
+
+    // Rebuild the line in its old order, dropping anyone no longer enrolled
+    const available = new Map();
+    desks.forEach(d => {
+        const key = studentKey(d.name, d.homeroom);
+        if (!available.has(key)) available.set(key, []);
+        available.get(key).push(d.id);
+    });
+    const rebuilt = [];
+    queuedKeys.forEach(key => {
+        const bucket = available.get(key);
+        if (bucket && bucket.length) rebuilt.push(bucket.shift());
+    });
+    queue.length = 0;
+    rebuilt.forEach(id => queue.push(id));
+
+    selectedQueueId = null;
+    setArmedMode(null);
+    renderHeader();
+    renderDesks();
+    renderQueue();
+}
+
+// --- Set Up Class modal ------------------------------------------------
+function openClassSetup() {
+    classNameInput.value = classLabel;
+    projectTitleInput.value = projectLabel;
+    rosterInput.value = rosterToText();
+    rosterHint.textContent = 'Seats fill left to right, in this order.';
+    rosterHint.classList.remove('error');
+    classOverlay.classList.add('open');
+    classNameInput.focus();
+}
+
+function closeClassSetup() {
+    classOverlay.classList.remove('open');
+}
+
+btnSetupClass.addEventListener('click', openClassSetup);
+classCloseBtn.addEventListener('click', closeClassSetup);
+classCancelBtn.addEventListener('click', closeClassSetup);
+classOverlay.addEventListener('click', function (e) {
+    if (e.target === classOverlay) closeClassSetup();
+});
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && classOverlay.classList.contains('open')) closeClassSetup();
+});
+
+classSaveBtn.addEventListener('click', function () {
+    const students = parseRoster(rosterInput.value);
+    if (!students.length) {
+        rosterHint.textContent = 'Add at least one student before saving.';
+        rosterHint.classList.add('error');
+        rosterInput.focus();
+        return;
+    }
+    classLabel = classNameInput.value.trim() || classLabel;
+    projectLabel = projectTitleInput.value.trim() || projectLabel;
+    applyRoster(students);
+    closeClassSetup();
+});
+
+// --- Reset All ---------------------------------------------------------
+btnResetAll.addEventListener('click', function () {
+    const ok = window.confirm(
+        'Reset every student to Pre-Writing and clear the check line?\n\n' +
+        'The class roster is kept.'
+    );
+    if (!ok) return;
+    desks.forEach(d => { d.stage = 0; });
+    queue.length = 0;
+    selectedQueueId = null;
+    setArmedMode(null);
+    renderDesks();
+    renderQueue();
 });

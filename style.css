@@ -583,6 +583,8 @@ body {
     --boy-text: #1B2A5B;
     --girl-bg: #F6DFF0;
     --girl-text: #5C1B52;
+    --neutral-bg: #E8EDF4;
+    --neutral-text: #334155;
 
     --stage-1-color: #2496C8;
     --stage-2-color: #93297E;
@@ -608,8 +610,16 @@ body {
 }
 .desk.boy { background: var(--boy-bg); }
 .desk.girl { background: var(--girl-bg); }
+.desk.neutral { background: var(--neutral-bg); }
 .desk.armable { cursor: pointer; }
 .desk.armable:hover { box-shadow: 0 3px 8px rgba(0,0,0,0.14); }
+
+/* First desk picked in a seat swap, waiting for its partner */
+.desk.swap-pick {
+    outline: 3px dashed #3b82f6;
+    outline-offset: 2px;
+    box-shadow: 0 0 14px 2px rgba(59,130,246,0.45);
+}
 
 .desk.wiggle { animation: deskWiggle 3s ease-in-out; }
 @keyframes deskWiggle {
@@ -662,6 +672,7 @@ body {
 }
 .desk.boy .desk-name, .desk.boy .desk-room { color: var(--boy-text); }
 .desk.girl .desk-name, .desk.girl .desk-room { color: var(--girl-text); }
+.desk.neutral .desk-name, .desk.neutral .desk-room { color: var(--neutral-text); }
 
 .desk-room {
     font-size: 0.58rem;
@@ -730,6 +741,10 @@ body {
     font-size: 0.85rem; user-select: none;
 }
 .ctrl-btn { background: #e2e8f0; color: #1e293b; }
+.ctrl-btn.armed {
+    background: #3b82f6; color: white;
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.35);
+}
 .action-btn.return { background: #d97706; color: white; }
 .action-btn.back { background: #c2410c; color: white; }
 .action-btn.done { background: #16a34a; color: white; }
@@ -778,3 +793,56 @@ body {
 .active-slot .queue-empty {
     background: white; border: 2px dashed #cbd5e1; border-radius: 8px; margin-bottom: 6px;
 }
+
+/* ============ Set Up Class modal ============ */
+.class-modal { width: 360px; }
+
+.text-input, .roster-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px;
+    border-radius: 8px;
+    border: 2px solid #e2e8f0;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    color: #1e293b;
+    font-size: 0.85rem;
+    background: white;
+}
+.text-input:focus, .roster-input:focus { outline: none; border-color: #3b82f6; }
+
+.roster-input {
+    height: 190px;
+    resize: vertical;
+    line-height: 1.45;
+    font-weight: 600;
+}
+
+.settings-row label em { font-style: normal; font-weight: 700; color: #64748b; }
+
+.roster-hint {
+    margin: 0;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #64748b;
+}
+.roster-hint.error { color: #dc2626; }
+
+.modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 18px;
+}
+.modal-btn {
+    flex: 1;
+    padding: 9px;
+    border: none;
+    border-radius: 8px;
+    font-family: 'Nunito', sans-serif;
+    font-weight: 800;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+.modal-btn.cancel { background: #e2e8f0; color: #334155; }
+.modal-btn.save { background: #16a34a; color: white; }
+.modal-btn:active { opacity: 0.8; }

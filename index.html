@@ -80,7 +80,7 @@
         <div class="center-column">
             <header class="slim-header">
                 <div class="project-info">
-                    <h1>Class: 2A1 ELA &nbsp;|&nbsp; <span class="project-title">Writing Project: Clark the Shark</span></h1>
+                    <h1>Class: <span id="class-name">2A1 ELA</span> &nbsp;|&nbsp; <span class="project-title">Writing Project: <span id="project-title">Clark the Shark</span></span></h1>
                 </div>
             </header>
             
@@ -94,8 +94,8 @@
             <h3 class="sidebar-title">Teacher Controls</h3>
             
             <div class="control-buttons">
-                <button class="ctrl-btn">Set Up Class</button>
-                <button class="ctrl-btn">Reset All</button>
+                <button class="ctrl-btn" id="btn-setup-class">Set Up Class</button>
+                <button class="ctrl-btn" id="btn-reset-all">Reset All</button>
                 <button class="ctrl-btn" id="btn-swap">Swap Seats</button>
             </div>
             
@@ -121,6 +121,37 @@
                     <ul id="queue-list"></ul>
                     <div class="scroll-indicator" id="queue-scroll-indicator">...</div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set Up Class Modal (roster + class/project names) -->
+    <div class="settings-modal-overlay" id="class-overlay">
+        <div class="settings-modal class-modal" role="dialog" aria-modal="true" aria-labelledby="class-setup-title">
+            <div class="settings-modal-header">
+                <h3 id="class-setup-title">Set Up Class</h3>
+                <button class="settings-close" id="class-close" aria-label="Close">&times;</button>
+            </div>
+
+            <div class="settings-row">
+                <label for="class-name-input">Class name</label>
+                <input type="text" id="class-name-input" class="text-input" placeholder="2A1 ELA">
+            </div>
+
+            <div class="settings-row">
+                <label for="project-title-input">Writing project</label>
+                <input type="text" id="project-title-input" class="text-input" placeholder="Clark the Shark">
+            </div>
+
+            <div class="settings-row">
+                <label for="roster-input">Students &mdash; one per line: <em>Name, homeroom, girl/boy</em></label>
+                <textarea id="roster-input" class="roster-input" spellcheck="false" placeholder="Sachiko, 203, girl&#10;Jimmy, 203, boy&#10;Alexandria, 205, girl"></textarea>
+                <p class="roster-hint" id="roster-hint">Seats fill left to right, in this order.</p>
+            </div>
+
+            <div class="modal-actions">
+                <button class="modal-btn cancel" id="class-cancel" type="button">Cancel</button>
+                <button class="modal-btn save" id="class-save" type="button">Save Class</button>
             </div>
         </div>
     </div>
