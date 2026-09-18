@@ -1,7 +1,7 @@
 // Writing Queue offline support.
 // You don't need to edit this file when you change the app: boards that are
 // online always load the newest version and save a fresh copy as they go.
-const CACHE = "writing-queue-v2";
+const CACHE = "writing-queue-v3";
 const SONG = "./media/warm-up-song.mp4";
 const CORE = [
   "./",
@@ -97,28 +97,30 @@ self.addEventListener("fetch", event => {
   })));
 });
 
-async function serveMedia(req) {
-  const cache = await caches.open(CACHE);
-  const whole = await cache.match(req.url);   // match the URL, ignoring Range
-  const range = req.headers.get("range");
+// A <video> fetches its file in many small byte ranges while it plays. The
+// Cache API can only hand back whole responses, so each range used to mean
+// reading and decoding the entire 8MB file again - enough to stutter playback
+// on classroom hardware. Read it once, keep the bytes, slice from memory.
+let songBytes = null;
+let songType = "video/mp4";
+let songBytesPending = null;
 
-  if (!whole) {
-    try {
-      const res = await fetch(req);
-      // Only a full 200 can be stored; a 206 is not cacheable.
-      if (res.ok && res.status === 200) cache.put(req.url, res.clone());
-      return res;
-    } catch (e) {
-      return new Response("The song is not available offline yet.", { status: 504 });
-    }
-  }
+function loadSongBytes(cache, url) {
+  if (songBytes) return Promise.resolve(songBytes);
+  if (songBytesPending) return songBytesPending;   // several ranges can land at once
+  songBytesPending = cache.match(url).then(whole => {
+    if (!whole) return null;
+    songType = whole.headers.get("Content-Type") || "video/mp4";
+    return whole.arrayBuffer().then(buf => { songBytes = buf; return buf; });
+  }).catch(() => null).then(buf => { songBytesPending = null; return buf; });
+  return songBytesPending;
+}
 
-  if (!range) return whole;
-
-  const buf = await whole.arrayBuffer();
+function rangeResponse(buf, range) {
   const m = /^bytes=(\d*)-(\d*)/.exec(range);
   let start = m && m[1] ? parseInt(m[1], 10) : 0;
   let end = m && m[2] ? parseInt(m[2], 10) : buf.byteLength - 1;
+
   if (isNaN(start) || start >= buf.byteLength) {
     return new Response(null, {
       status: 416,
@@ -130,10 +132,30 @@ async function serveMedia(req) {
   return new Response(buf.slice(start, end + 1), {
     status: 206,
     headers: {
-      "Content-Type": whole.headers.get("Content-Type") || "video/mp4",
+      "Content-Type": songType,
       "Content-Length": String(end - start + 1),
       "Content-Range": "bytes " + start + "-" + end + "/" + buf.byteLength,
       "Accept-Ranges": "bytes"
     }
   });
+}
+
+async function serveMedia(req) {
+  const cache = await caches.open(CACHE);
+  const range = req.headers.get("range");
+  const buf = await loadSongBytes(cache, req.url);
+
+  if (buf) return range ? rangeResponse(buf, range) : new Response(buf, {
+    status: 200,
+    headers: { "Content-Type": songType, "Content-Length": String(buf.byteLength), "Accept-Ranges": "bytes" }
+  });
+
+  // Not cached yet - go to the network and keep a copy for next time
+  try {
+    const res = await fetch(req);
+    if (res.ok && res.status === 200) cache.put(req.url, res.clone());
+    return res;
+  } catch (e) {
+    return new Response("The song is not available offline yet.", { status: 504 });
+  }
 }
