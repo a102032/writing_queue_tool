@@ -17,6 +17,67 @@
 </head>
 <body>
 
+    <!-- Welcome splash. Visible by default from CSS so the board never flashes
+         the desk grid first; app.js takes it away on "Start Writing". -->
+    <div class="splash" id="splash" role="dialog" aria-modal="true" aria-labelledby="splash-title">
+        <div class="splash-sky" id="splash-sky" aria-hidden="true"></div>
+
+        <div class="splash-card" id="splash-card">
+            <div class="splash-mark" aria-hidden="true">
+                <svg viewBox="0 0 120 120" width="96" height="96">
+                    <circle cx="60" cy="60" r="56" fill="#fff" opacity="0.18"/>
+                    <g transform="rotate(-38 60 60)">
+                        <rect x="50" y="16" width="20" height="62" rx="4" fill="#F0AD1F"/>
+                        <rect x="50" y="16" width="7" height="62" fill="#ffd977"/>
+                        <rect x="50" y="78" width="20" height="8" fill="#f6dfc0"/>
+                        <polygon points="50,86 70,86 60,104" fill="#f6dfc0"/>
+                        <polygon points="55,95 65,95 60,104" fill="#2c3e50"/>
+                        <rect x="50" y="8" width="20" height="10" rx="3" fill="#F6DFF0"/>
+                    </g>
+                </svg>
+            </div>
+
+            <h1 class="splash-title" id="splash-title">Welcome to Writing!</h1>
+            <p class="splash-sub">Let's warm up our writing hands.</p>
+            <p class="splash-class" id="splash-class"></p>
+
+            <div class="splash-actions">
+                <button class="splash-btn song" id="btn-play-song" type="button">
+                    <span class="splash-btn-icon" aria-hidden="true">&#9654;</span>
+                    Play the Warm-Up Song
+                </button>
+                <button class="splash-btn enter" id="btn-enter-app" type="button">
+                    Start Writing
+                    <span class="splash-btn-icon" aria-hidden="true">&rarr;</span>
+                </button>
+            </div>
+
+            <p class="splash-hint">Teachers: press <kbd>Enter</kbd> to go straight to the class board.</p>
+        </div>
+
+        <!-- Song player, opened from the splash -->
+        <div class="song-stage" id="song-stage">
+            <div class="song-box">
+                <div class="song-head">
+                    <h2 id="song-title">Writing Warm-Up Song</h2>
+                    <button class="song-close" id="btn-close-song" type="button" aria-label="Close the song">&times;</button>
+                </div>
+                <video id="warmup-video" class="song-video" src="media/warm-up-song.mp4"
+                       controls playsinline preload="none" poster=""></video>
+                <p class="song-fallback" id="song-fallback" hidden>
+                    This browser can&rsquo;t play the song.
+                    <a href="media/warm-up-song.mp4" download>Download it</a> and open it in a video player.
+                </p>
+                <div class="song-actions">
+                    <button class="splash-btn enter small" id="btn-song-done" type="button">
+                        Start Writing
+                        <span class="splash-btn-icon" aria-hidden="true">&rarr;</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="app-layout">
         
         <!-- Left Side: Student Interaction & Timer -->

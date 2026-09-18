@@ -1383,3 +1383,132 @@ undoBtn.addEventListener('click', function () {
     if (applyState(undoSnapshot)) renderAll();
     hideUndo();
 });
+
+// ============================================
+// Welcome splash + warm-up song
+// ============================================
+// The splash is visible from CSS on load so the board never flashes the desk
+// grid first. Everything below is about getting out of it again.
+const splash = document.getElementById('splash');
+const splashSky = document.getElementById('splash-sky');
+const splashTitle = document.getElementById('splash-title');
+const splashClass = document.getElementById('splash-class');
+const btnEnterApp = document.getElementById('btn-enter-app');
+const btnPlaySong = document.getElementById('btn-play-song');
+const btnCloseSong = document.getElementById('btn-close-song');
+const btnSongDone = document.getElementById('btn-song-done');
+const songStage = document.getElementById('song-stage');
+const songFallback = document.getElementById('song-fallback');
+const warmupVideo = document.getElementById('warmup-video');
+
+const prefersReducedMotion = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Wrap each letter so the title can bounce a letter at a time. The <h1> keeps
+// its text, so screen readers and the page title are unaffected.
+function animateSplashTitle() {
+    if (prefersReducedMotion) return;
+    const text = splashTitle.textContent;
+    splashTitle.textContent = '';
+    text.split('').forEach((ch, i) => {
+        const span = document.createElement('span');
+        span.className = ch === ' ' ? 'ltr space' : 'ltr';
+        span.textContent = ch === ' ' ? ' ' : ch;
+        span.style.animationDelay = (i * 0.08).toFixed(2) + 's';
+        splashTitle.appendChild(span);
+    });
+}
+
+// Letters and pencils drifting up behind the card
+const SPLASH_FLOATERS = ['A', 'B', 'C', 'a', 'b', 'c', '✏️', '✨', '⭐', '\u{1F4DA}', '1', '2', '3'];
+function startSplashSky() {
+    if (prefersReducedMotion) return;
+    for (let i = 0; i < 18; i++) {
+        const el = document.createElement('span');
+        el.className = 'splash-float';
+        el.textContent = SPLASH_FLOATERS[Math.floor(Math.random() * SPLASH_FLOATERS.length)];
+        el.style.left = (Math.random() * 96) + '%';
+        el.style.fontSize = (1.5 + Math.random() * 2.4).toFixed(2) + 'rem';
+        el.style.animationDuration = (11 + Math.random() * 12).toFixed(1) + 's';
+        el.style.animationDelay = (-Math.random() * 18).toFixed(1) + 's';
+        el.style.setProperty('--spin', (Math.random() * 90 - 45).toFixed(0) + 'deg');
+        splashSky.appendChild(el);
+    }
+}
+
+function showSplashClass() {
+    const bits = [];
+    if (classLabel) bits.push(classLabel);
+    if (projectLabel) bits.push(projectLabel);
+    splashClass.textContent = bits.join('  •  ');
+}
+
+function stopSong() {
+    try {
+        warmupVideo.pause();
+        warmupVideo.currentTime = 0;
+    } catch (e) { /* nothing playing yet */ }
+}
+
+function closeSong() {
+    stopSong();
+    songStage.classList.remove('open');
+    btnPlaySong.focus();
+}
+
+let splashDismissed = false;
+function enterApp() {
+    if (splashDismissed) return;
+    splashDismissed = true;
+    stopSong();
+    splash.classList.add('leaving');
+    const finish = () => {
+        splash.classList.add('hidden');
+        splashSky.innerHTML = '';   // stop the drifting letters animating off-screen
+        btnReady.focus();
+    };
+    if (prefersReducedMotion) finish();
+    else setTimeout(finish, 450);
+}
+
+btnEnterApp.addEventListener('click', enterApp);
+btnSongDone.addEventListener('click', enterApp);
+btnCloseSong.addEventListener('click', closeSong);
+
+btnPlaySong.addEventListener('click', function () {
+    songStage.classList.add('open');
+    warmupVideo.preload = 'auto';
+    // Started from a tap, so the browser lets it play with sound.
+    const started = warmupVideo.play();
+    if (started && started.catch) started.catch(() => { /* teacher can use the controls */ });
+    btnCloseSong.focus();
+});
+
+// If the file or its codec is unavailable, say so and offer the download
+// rather than leaving a silent black box on the board.
+warmupVideo.addEventListener('error', function () {
+    songFallback.hidden = false;
+});
+
+songStage.addEventListener('click', function (e) {
+    if (e.target === songStage) closeSong();
+});
+
+document.addEventListener('keydown', function (e) {
+    if (splashDismissed) return;
+    if (e.key === 'Escape') {
+        // Escape backs out of the song first, then off the splash entirely
+        if (songStage.classList.contains('open')) closeSong();
+        else enterApp();
+        return;
+    }
+    // Enter goes straight to the board, unless a button already has focus
+    if (e.key === 'Enter' && !(document.activeElement && document.activeElement.tagName === 'BUTTON')) {
+        enterApp();
+    }
+});
+
+animateSplashTitle();
+startSplashSky();
+showSplashClass();
+btnEnterApp.focus();

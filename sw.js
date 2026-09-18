@@ -1,7 +1,8 @@
 // Writing Queue offline support.
 // You don't need to edit this file when you change the app: boards that are
 // online always load the newest version and save a fresh copy as they go.
-const CACHE = "writing-queue-v1";
+const CACHE = "writing-queue-v2";
+const SONG = "./media/warm-up-song.mp4";
 const CORE = [
   "./",
   "./index.html",
@@ -17,7 +18,14 @@ const CORE = [
 ];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE)).then(() => self.skipWaiting()));
+  event.waitUntil(
+    caches.open(CACHE)
+      .then(cache => cache.addAll(CORE)
+        // The song is several megabytes. Cache it too, but never let it fail
+        // the install - the app itself must still work offline without it.
+        .then(() => cache.add(SONG).catch(() => {})))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener("activate", event => {
@@ -74,9 +82,58 @@ self.addEventListener("fetch", event => {
     return;
   }
 
+  // The song. A <video> asks for byte ranges, and the Cache API only stores
+  // whole 200 responses, so serve the range by slicing the cached copy - a
+  // plain cache hit would break seeking and some browsers' playback outright.
+  if (url.pathname.endsWith(".mp4")) {
+    event.respondWith(serveMedia(req));
+    return;
+  }
+
   // Icons and other files: saved copy first.
   event.respondWith(caches.match(req).then(hit => hit || fetch(req).then(res => {
     if (res.ok) caches.open(CACHE).then(c => c.put(req, res.clone()));
     return res;
   })));
 });
+
+async function serveMedia(req) {
+  const cache = await caches.open(CACHE);
+  const whole = await cache.match(req.url);   // match the URL, ignoring Range
+  const range = req.headers.get("range");
+
+  if (!whole) {
+    try {
+      const res = await fetch(req);
+      // Only a full 200 can be stored; a 206 is not cacheable.
+      if (res.ok && res.status === 200) cache.put(req.url, res.clone());
+      return res;
+    } catch (e) {
+      return new Response("The song is not available offline yet.", { status: 504 });
+    }
+  }
+
+  if (!range) return whole;
+
+  const buf = await whole.arrayBuffer();
+  const m = /^bytes=(\d*)-(\d*)/.exec(range);
+  let start = m && m[1] ? parseInt(m[1], 10) : 0;
+  let end = m && m[2] ? parseInt(m[2], 10) : buf.byteLength - 1;
+  if (isNaN(start) || start >= buf.byteLength) {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": "bytes */" + buf.byteLength }
+    });
+  }
+  if (isNaN(end) || end >= buf.byteLength) end = buf.byteLength - 1;
+
+  return new Response(buf.slice(start, end + 1), {
+    status: 206,
+    headers: {
+      "Content-Type": whole.headers.get("Content-Type") || "video/mp4",
+      "Content-Length": String(end - start + 1),
+      "Content-Range": "bytes " + start + "-" + end + "/" + buf.byteLength,
+      "Accept-Ranges": "bytes"
+    }
+  });
+}

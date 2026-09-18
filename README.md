@@ -19,6 +19,15 @@ with no internet at all, and picks up any changes you publish the next time it o
 
 ## Using it
 
+**The welcome splash** — the app opens on a welcome screen for the class, with two buttons:
+
+- **Play the Warm-Up Song** opens the handwriting warm-up video. Close it with the
+  &times;, by clicking outside it, or with <kbd>Esc</kbd>.
+- **Start Writing** goes to the class board. <kbd>Enter</kbd> does the same, and
+  <kbd>Esc</kbd> works once the song is closed.
+
+The splash appears every time the app is opened. Leaving it always stops the song.
+
 **Set Up Class** — enter the class name, the writing project, and the roster.
 One student per line:
 
@@ -58,6 +67,16 @@ Reset All and saving a roster can both be undone from the bar that appears after
 The roster, seating, writing stages, check line, and the two header labels are saved in the
 browser's local storage on that computer. They survive closing the app and rebooting, but
 they don't travel between computers, and clearing the browser's site data clears them too.
+
+## Changing the warm-up song
+Replace `media/warm-up-song.mp4`, keeping the same filename. Use **H.264 video with AAC
+audio in an .mp4** — that is what every current browser can play. Then bump the `CACHE`
+name in `sw.js` (for example `writing-queue-v2` to `-v3`) so installed boards fetch the
+new one instead of the copy they already saved.
+
+The song is cached for offline use like the rest of the app, but it is several megabytes,
+so a board that never finished caching it will still open and run fine; it just shows a
+"can't play the song" message with a download link until it is online again.
 
 ## Changing the icons
 `icons/icon.svg` is the source art. Re-export it to the PNG sizes listed in
