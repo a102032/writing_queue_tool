@@ -4,10 +4,79 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Grade 2 Writing Queue</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#2563eb">
+    <meta name="description" content="A classroom writing-conference queue and timer for Grade 2.">
+    <link rel="icon" type="image/png" sizes="48x48" href="icons/favicon-48.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
 </head>
 <body>
+
+    <!-- Welcome splash. Visible by default from CSS so the board never flashes
+         the desk grid first; app.js takes it away on "Start Writing". -->
+    <div class="splash" id="splash" role="dialog" aria-modal="true" aria-labelledby="splash-title">
+        <div class="splash-sky" id="splash-sky" aria-hidden="true"></div>
+
+        <div class="splash-card" id="splash-card">
+            <div class="splash-mark" aria-hidden="true">
+                <svg viewBox="0 0 120 120" width="96" height="96">
+                    <circle cx="60" cy="60" r="56" fill="#fff" opacity="0.18"/>
+                    <g transform="rotate(-38 60 60)">
+                        <rect x="50" y="16" width="20" height="62" rx="4" fill="#F0AD1F"/>
+                        <rect x="50" y="16" width="7" height="62" fill="#ffd977"/>
+                        <rect x="50" y="78" width="20" height="8" fill="#f6dfc0"/>
+                        <polygon points="50,86 70,86 60,104" fill="#f6dfc0"/>
+                        <polygon points="55,95 65,95 60,104" fill="#2c3e50"/>
+                        <rect x="50" y="8" width="20" height="10" rx="3" fill="#F6DFF0"/>
+                    </g>
+                </svg>
+            </div>
+
+            <h1 class="splash-title" id="splash-title">Welcome to Writing!</h1>
+            <p class="splash-sub">Let's warm up our writing hands.</p>
+            <p class="splash-class" id="splash-class"></p>
+
+            <div class="splash-actions">
+                <button class="splash-btn song" id="btn-play-song" type="button">
+                    <span class="splash-btn-icon" aria-hidden="true">&#9654;</span>
+                    Play the Warm-Up Song
+                </button>
+                <button class="splash-btn enter" id="btn-enter-app" type="button">
+                    Start Writing
+                    <span class="splash-btn-icon" aria-hidden="true">&rarr;</span>
+                </button>
+            </div>
+
+            <p class="splash-hint">Teachers: press <kbd>Enter</kbd> to go straight to the class board.</p>
+        </div>
+
+        <!-- Song player, opened from the splash -->
+        <div class="song-stage" id="song-stage">
+            <div class="song-box">
+                <div class="song-head">
+                    <h2 id="song-title">Writing Warm-Up Song</h2>
+                    <button class="song-close" id="btn-close-song" type="button" aria-label="Close the song">&times;</button>
+                </div>
+                <video id="warmup-video" class="song-video" src="media/warm-up-song.mp4"
+                       controls playsinline preload="none" poster=""></video>
+                <p class="song-fallback" id="song-fallback" hidden>
+                    This browser can&rsquo;t play the song.
+                    <a href="media/warm-up-song.mp4" download>Download it</a> and open it in a video player.
+                </p>
+                <div class="song-actions">
+                    <button class="splash-btn enter small" id="btn-song-done" type="button">
+                        Start Writing
+                        <span class="splash-btn-icon" aria-hidden="true">&rarr;</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="app-layout">
         
@@ -80,7 +149,7 @@
         <div class="center-column">
             <header class="slim-header">
                 <div class="project-info">
-                    <h1>Class: 2A1 ELA &nbsp;|&nbsp; <span class="project-title">Writing Project: Clark the Shark</span></h1>
+                    <h1>Class: <span id="class-name">2A1 ELA</span> &nbsp;|&nbsp; <span class="project-title">Writing Project: <span id="project-title">Clark the Shark</span></span></h1>
                 </div>
             </header>
             
@@ -94,43 +163,84 @@
             <h3 class="sidebar-title">Teacher Controls</h3>
             
             <div class="control-buttons">
-                <button class="ctrl-btn">Set Up Class</button>
-                <button class="ctrl-btn">Reset All</button>
+                <button class="ctrl-btn" id="btn-setup-class">Set Up Class</button>
+                <button class="ctrl-btn" id="btn-reset-all">Reset All</button>
                 <button class="ctrl-btn" id="btn-swap">Swap Seats</button>
             </div>
             
             <div class="bottom-controls">
                 
                 <div class="move-arrows" id="move-arrows">
-                    <button class="arrow-btn" id="btn-move-up">▲</button>
-                    <button class="arrow-btn" id="btn-move-down">▼</button>
+                    <button class="arrow-btn" id="btn-move-up" aria-label="Move up in line">▲</button>
+                    <button class="arrow-btn" id="btn-move-down" aria-label="Move down in line">▼</button>
                 </div>
 
                 <div class="action-buttons">
-                    <button class="action-btn return">Return to Seat</button>
-                    <button class="action-btn back">Back of Line</button>
-                    <button class="action-btn done">Done</button>
+                    <button class="action-btn return" id="btn-return-seat">Return to Seat</button>
+                    <button class="action-btn back" id="btn-back-of-line">Back of Line</button>
+                    <button class="action-btn done" id="btn-done">Done</button>
                 </div>
 
                 <h4 class="active-title">Now Checking</h4>
-                <div class="chiclet active-chiclet">
-                    <span>Sachiko 203</span>
-                    <span class="queue-badge">1</span>
-                </div>
+                <!-- Now Checking chiclet + waiting list are rendered by app.js from queue state -->
+                <div class="active-slot" id="active-slot"></div>
 
                 <div class="waiting-queue-box">
                     <h4>Waiting:</h4>
-                    <ul id="queue-list">
-                        <li class="chiclet"><span>Jimmy 203</span><span class="queue-badge">2</span></li>
-                        <li class="chiclet"><span>Sam 201</span><span class="queue-badge">3</span></li>
-                        <li class="chiclet"><span>Jenny 205</span><span class="queue-badge">4</span></li>
-                        <li class="chiclet"><span>Fred 208</span><span class="queue-badge">5</span></li>
-                        <li class="chiclet"><span>Sarah 202</span><span class="queue-badge">6</span></li>
-                        <li class="chiclet"><span>Mike 210</span><span class="queue-badge">7</span></li>
-                        <li class="chiclet"><span>Leo 204</span><span class="queue-badge">8</span></li>
-                    </ul>
-                    <div class="scroll-indicator">...</div>
+                    <ul id="queue-list"></ul>
+                    <div class="scroll-indicator" id="queue-scroll-indicator">...</div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Undo bar for destructive actions -->
+    <div class="undo-toast" id="undo-toast" role="status" aria-live="polite">
+        <span id="undo-message"></span>
+        <button class="undo-btn" id="undo-btn" type="button">Undo</button>
+    </div>
+
+    <!-- Confirm dialog (in-app, so it still works in an installed window) -->
+    <div class="settings-modal-overlay" id="confirm-overlay">
+        <div class="settings-modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div class="settings-modal-header">
+                <h3 id="confirm-title">Are you sure?</h3>
+            </div>
+            <p class="confirm-text" id="confirm-text"></p>
+            <div class="modal-actions">
+                <button class="modal-btn cancel" id="confirm-no" type="button">Cancel</button>
+                <button class="modal-btn danger" id="confirm-yes" type="button">Yes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Set Up Class Modal (roster + class/project names) -->
+    <div class="settings-modal-overlay" id="class-overlay">
+        <div class="settings-modal class-modal" role="dialog" aria-modal="true" aria-labelledby="class-setup-title">
+            <div class="settings-modal-header">
+                <h3 id="class-setup-title">Set Up Class</h3>
+                <button class="settings-close" id="class-close" aria-label="Close">&times;</button>
+            </div>
+
+            <div class="settings-row">
+                <label for="class-name-input">Class name</label>
+                <input type="text" id="class-name-input" class="text-input" placeholder="2A1 ELA">
+            </div>
+
+            <div class="settings-row">
+                <label for="project-title-input">Writing project</label>
+                <input type="text" id="project-title-input" class="text-input" placeholder="Clark the Shark">
+            </div>
+
+            <div class="settings-row">
+                <label for="roster-input">Students &mdash; one per line: <em>Name, homeroom, girl/boy</em></label>
+                <textarea id="roster-input" class="roster-input" spellcheck="false" placeholder="Sachiko, 203, girl&#10;Jimmy, 203, boy&#10;Alexandria, 205, girl"></textarea>
+                <p class="roster-hint" id="roster-hint">Seats fill left to right, in this order.</p>
+            </div>
+
+            <div class="modal-actions">
+                <button class="modal-btn cancel" id="class-cancel" type="button">Cancel</button>
+                <button class="modal-btn save" id="class-save" type="button">Save Class</button>
             </div>
         </div>
     </div>
@@ -176,5 +286,12 @@
     </div>
 
     <script src="app.js"></script>
+    <script>
+        // Offline support + "install this as an app". Needs http(s), so opening
+        // the file directly from disk simply skips it and the app still runs.
+        if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+        }
+    </script>
 </body>
 </html>

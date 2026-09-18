@@ -31,8 +31,8 @@ const placeholderRoster = [
     ['Nora', 'girl', 209], ['Caleb', 'boy', 205]
 ];
 
-// Queue positions matching the placeholder "Now Checking" / "Waiting" sidebar content
-const queuePositions = { 'Sachiko': 1, 'Jimmy': 2, 'Sam': 3, 'Jenny': 4, 'Fred': 5, 'Sarah': 6, 'Mike': 7, 'Leo': 8 };
+// Students already lined up when the page loads, in line order
+const initialQueueNames = ['Sachiko', 'Jimmy', 'Sam', 'Jenny', 'Fred', 'Sarah', 'Mike', 'Leo'];
 
 // Spread starting stages across the grid just so the demo shows real variety
 const starterStages = [0, 1, 0, 2, 4, 0, 1, 2, 0, 3, 1, 0, 2, 0, 1, 0, 3, 1, 0, 2, 0, 1, 4, 0, 2, 0, 1, 0, 3, 0];
@@ -43,14 +43,43 @@ const desks = placeholderRoster.map(([name, gender, homeroom], i) => ({
     gender,
     homeroom,
     stage: starterStages[i],
-    queue: queuePositions[name] || null
+    queue: null   // line position, kept in sync with `queue` below
 }));
+
+function deskById(id) {
+    return desks.find(d => d.id === id);
+}
+
+// ============================================
+// Queue state
+// ============================================
+// The single source of truth for the check line: desk ids in line order.
+// queue[0] is the student being checked right now ("Now Checking"); the
+// rest are the waiting list. Every desk badge and sidebar chiclet is
+// derived from this array, so mutating it + renderQueue() is the only way
+// the line ever changes.
+const queue = initialQueueNames
+    .map(name => desks.find(d => d.name === name))
+    .filter(Boolean)
+    .map(d => d.id);
+
+// Shown in the header, edited in the Set Up Class modal
+let classLabel = '2A1 ELA';
+let projectLabel = 'Clark the Shark';
+
+// Declared up here because startup calls loadClassState() long before the
+// class-setup section at the bottom of this file is evaluated.
+const CLASS_KEY = 'writingQueueClass_v1';
 
 // ============================================
 // Desk rendering
 // ============================================
 const classroomGrid = document.getElementById('classroom-grid');
-let changeLevelArmed = false;
+// What a desk tap does right now: nothing (null), bump its writing stage
+// ('level'), put the student in the check line ('ready'), or pick it for a
+// seat swap ('swap'). Exactly one mode is armed at a time.
+let armedMode = null;
+let swapFirstId = null;
 
 function deskCardHTML(desk) {
     const stage = stages[desk.stage];
@@ -84,13 +113,28 @@ function renderDesks() {
 
 function updateArmableState() {
     document.querySelectorAll('.desk').forEach(el => {
-        el.classList.toggle('armable', changeLevelArmed);
+        el.classList.toggle('armable', armedMode !== null);
     });
+    if (swapFirstId !== null) {
+        const el = document.getElementById('desk-' + swapFirstId);
+        if (el) el.classList.add('swap-pick');
+    }
+}
+
+// Tapping the button of the live mode disarms it; any other button switches.
+function setArmedMode(mode) {
+    armedMode = (mode === armedMode) ? null : mode;
+    if (armedMode !== 'swap') clearSwapPick();
+    btnChangeLevel.classList.toggle('armed', armedMode === 'level');
+    btnReady.classList.toggle('armed', armedMode === 'ready');
+    btnSwap.classList.toggle('armed', armedMode === 'swap');
+    updateArmableState();
 }
 
 function onDeskTap(id) {
-    if (!changeLevelArmed) return;
-    advanceDeskStage(id);
+    if (armedMode === 'ready') addToQueue(id);
+    else if (armedMode === 'level') advanceDeskStage(id);
+    else if (armedMode === 'swap') pickForSwap(id);
 }
 
 function advanceDeskStage(id) {
@@ -120,6 +164,8 @@ function advanceDeskStage(id) {
         confettiRain();
         playCelebrationSound();
     }
+
+    saveClassState();
 }
 
 // ============================================
@@ -265,12 +311,11 @@ function playCelebrationSound() {
 // Change Level button
 // ============================================
 const btnChangeLevel = document.getElementById('btn-next-step');
-btnChangeLevel.addEventListener('click', () => {
-    changeLevelArmed = !changeLevelArmed;
-    btnChangeLevel.classList.toggle('armed', changeLevelArmed);
-    updateArmableState();
-});
+btnChangeLevel.addEventListener('click', () => setArmedMode('level'));
 
+loadClassState();
+syncDeskQueueNumbers();
+renderHeader();
 renderDesks();
 
 // ============================================
@@ -752,24 +797,191 @@ controlsHandle.addEventListener('click', function () {
     controlsHandle.setAttribute('aria-label', isExpanded ? 'Hide timer controls' : 'Show timer controls');
 });
 
-const chiclets = document.querySelectorAll('.chiclet');
+// ============================================
+// Check queue: rendering + teacher actions
+// ============================================
+const activeSlot = document.getElementById('active-slot');
 const moveArrows = document.getElementById('move-arrows');
+const btnMoveUp = document.getElementById('btn-move-up');
+const btnMoveDown = document.getElementById('btn-move-down');
+const btnReturnSeat = document.getElementById('btn-return-seat');
+const btnBackOfLine = document.getElementById('btn-back-of-line');
+const btnDone = document.getElementById('btn-done');
+const btnReady = document.getElementById('btn-ready');
+const scrollIndicator = document.getElementById('queue-scroll-indicator');
 
-chiclets.forEach(chiclet => {
-    chiclet.addEventListener('click', () => {
-        if (!isDragging) {
-            const wasSelected = chiclet.classList.contains('selected');
-            chiclets.forEach(c => c.classList.remove('selected'));
-            
-            if (!wasSelected) {
-                chiclet.classList.add('selected');
-                moveArrows.classList.add('visible');
-            } else {
-                moveArrows.classList.remove('visible');
-            }
-        }
+// Desk id of the chiclet the teacher has tapped, or null. Actions with no
+// selection fall through to whoever is being checked right now.
+let selectedQueueId = null;
+
+// Copy line positions from `queue` onto the desk objects so desk cards,
+// which render from `desk.queue`, stay in step with the sidebar.
+function syncDeskQueueNumbers() {
+    desks.forEach(d => { d.queue = null; });
+    queue.forEach((id, i) => {
+        const desk = deskById(id);
+        if (desk) desk.queue = i + 1;
     });
+}
+
+// Patch the badges in place rather than re-rendering the grid, so a desk
+// mid-wiggle or mid-sparkle keeps its animation.
+function updateDeskBadges() {
+    desks.forEach(desk => {
+        const el = document.getElementById('desk-' + desk.id);
+        if (!el) return;
+        const badge = el.querySelector('.desk-badge');
+        if (!badge) return;
+        badge.textContent = desk.queue ? desk.queue : '';
+        badge.classList.toggle('hidden', !desk.queue);
+    });
+}
+
+function chicletHTML(desk, position) {
+    return '<span>' + desk.name + ' ' + desk.homeroom + '</span>' +
+           '<span class="queue-badge">' + position + '</span>';
+}
+
+function renderQueue() {
+    syncDeskQueueNumbers();
+
+    // A student who left the line can't stay selected
+    if (selectedQueueId !== null && queue.indexOf(selectedQueueId) === -1) {
+        selectedQueueId = null;
+    }
+
+    // "Now Checking" slot
+    activeSlot.innerHTML = '';
+    if (queue.length) {
+        const desk = deskById(queue[0]);
+        const el = document.createElement('div');
+        el.className = 'chiclet active-chiclet' + (selectedQueueId === desk.id ? ' selected' : '');
+        el.dataset.deskId = String(desk.id);
+        el.innerHTML = chicletHTML(desk, 1);
+        activeSlot.appendChild(el);
+    } else {
+        const el = document.createElement('div');
+        el.className = 'queue-empty';
+        el.textContent = 'Nobody in line';
+        activeSlot.appendChild(el);
+    }
+
+    // Waiting list (everyone behind the student being checked)
+    queueList.innerHTML = '';
+    const waiting = queue.slice(1);
+    if (waiting.length) {
+        waiting.forEach((id, i) => {
+            const desk = deskById(id);
+            const li = document.createElement('li');
+            li.className = 'chiclet' + (selectedQueueId === id ? ' selected' : '');
+            li.dataset.deskId = String(id);
+            li.innerHTML = chicletHTML(desk, i + 2);
+            queueList.appendChild(li);
+        });
+    } else {
+        const li = document.createElement('li');
+        li.className = 'queue-empty';
+        li.textContent = 'No one waiting';
+        queueList.appendChild(li);
+    }
+
+    // The "..." hint only means something when the list actually overflows
+    scrollIndicator.classList.toggle('hidden', waiting.length < 5);
+
+    moveArrows.classList.toggle('visible', selectedQueueId !== null);
+
+    const idx = selectedQueueId === null ? -1 : queue.indexOf(selectedQueueId);
+    btnMoveUp.disabled = idx <= 0;
+    btnMoveDown.disabled = idx === -1 || idx >= queue.length - 1;
+
+    const hasTarget = queueTargetId() !== null;
+    btnReturnSeat.disabled = !hasTarget;
+    btnBackOfLine.disabled = !hasTarget;
+    btnDone.disabled = !hasTarget;
+
+    updateDeskBadges();
+    saveClassState();
+}
+
+// Actions act on the selected chiclet, or on the student being checked
+// when nothing is selected - that's the common case for a teacher.
+function queueTargetId() {
+    if (selectedQueueId !== null) return selectedQueueId;
+    return queue.length ? queue[0] : null;
+}
+
+function addToQueue(id) {
+    if (queue.indexOf(id) !== -1) return;   // already in line
+    queue.push(id);
+    renderQueue();
+}
+
+function removeFromQueue(id) {
+    const i = queue.indexOf(id);
+    if (i === -1) return false;
+    queue.splice(i, 1);
+    if (selectedQueueId === id) selectedQueueId = null;
+    return true;
+}
+
+function moveSelected(delta) {
+    if (selectedQueueId === null) return;
+    const i = queue.indexOf(selectedQueueId);
+    const j = i + delta;
+    if (i === -1 || j < 0 || j >= queue.length) return;
+    queue[i] = queue[j];
+    queue[j] = selectedQueueId;
+    renderQueue();
+}
+
+// Tap a chiclet to select it, tap again to deselect
+function onChicletClick(e) {
+    if (isDragging) return;
+    const el = e.target.closest('[data-desk-id]');
+    if (!el) return;
+    const id = Number(el.dataset.deskId);
+    selectedQueueId = (selectedQueueId === id) ? null : id;
+    renderQueue();
+}
+
+activeSlot.addEventListener('click', onChicletClick);
+queueList.addEventListener('click', onChicletClick);
+
+btnMoveUp.addEventListener('click', () => moveSelected(-1));
+btnMoveDown.addEventListener('click', () => moveSelected(1));
+
+// Sent back to work without being checked off - just leaves the line
+btnReturnSeat.addEventListener('click', () => {
+    const id = queueTargetId();
+    if (id === null) return;
+    removeFromQueue(id);
+    renderQueue();
 });
+
+// Still needs checking, but someone else goes first
+btnBackOfLine.addEventListener('click', () => {
+    const id = queueTargetId();
+    if (id === null) return;
+    if (removeFromQueue(id)) queue.push(id);
+    renderQueue();
+});
+
+// Check passed: leaves the line and moves up a writing stage
+btnDone.addEventListener('click', () => {
+    const id = queueTargetId();
+    if (id === null) return;
+    removeFromQueue(id);
+    renderQueue();
+    const desk = deskById(id);
+    if (desk && desk.stage < stages.length - 1) advanceDeskStage(id);
+});
+
+// ============================================
+// Ready to Check button
+// ============================================
+btnReady.addEventListener('click', () => setArmedMode('ready'));
+
+renderQueue();
 
 // ============================================
 // Timer Settings Modal
@@ -822,3 +1034,481 @@ warningToggle.addEventListener('change', function () {
     saveSettings();
     updateWarningState();
 });
+
+// ============================================
+// Class setup: roster, seat swapping, persistence
+// ============================================
+const btnSwap = document.getElementById('btn-swap');
+const btnSetupClass = document.getElementById('btn-setup-class');
+const btnResetAll = document.getElementById('btn-reset-all');
+const classOverlay = document.getElementById('class-overlay');
+const classCloseBtn = document.getElementById('class-close');
+const classCancelBtn = document.getElementById('class-cancel');
+const classSaveBtn = document.getElementById('class-save');
+const classNameInput = document.getElementById('class-name-input');
+const projectTitleInput = document.getElementById('project-title-input');
+const rosterInput = document.getElementById('roster-input');
+const rosterHint = document.getElementById('roster-hint');
+
+function renderHeader() {
+    document.getElementById('class-name').textContent = classLabel;
+    document.getElementById('project-title').textContent = projectLabel;
+}
+
+// --- Persistence -------------------------------------------------------
+// localStorage can throw (private browsing, blocked storage). The tool still
+// works fine without it, so every access is best-effort.
+function serializeState() {
+    return {
+        classLabel: classLabel,
+        projectLabel: projectLabel,
+        desks: desks.map(d => ({
+            id: d.id, name: d.name, gender: d.gender,
+            homeroom: d.homeroom, stage: d.stage
+        })),
+        queue: queue.slice()
+    };
+}
+
+// Load a state object into the live app. Shared by startup, undo, and any
+// future import, so saved data is validated in exactly one place.
+// Returns false and changes nothing if the object is unusable.
+function applyState(saved) {
+    if (!saved || !Array.isArray(saved.desks)) return false;
+
+    const restored = saved.desks
+        .filter(d => d && typeof d.name === 'string' && d.name.trim())
+        .map(d => ({
+            id: d.id,
+            name: d.name,
+            gender: (d.gender === 'boy' || d.gender === 'girl') ? d.gender : 'neutral',
+            homeroom: d.homeroom == null ? '' : d.homeroom,
+            // A stage outside the current range would break rendering
+            stage: (Number.isInteger(d.stage) && d.stage >= 0 && d.stage < stages.length) ? d.stage : 0,
+            queue: null
+        }));
+    if (!restored.length) return false;
+
+    desks.length = 0;
+    restored.forEach(d => desks.push(d));
+
+    // Drop any line entry whose student is no longer on the roster
+    const validIds = new Set(desks.map(d => d.id));
+    const savedQueue = Array.isArray(saved.queue) ? saved.queue : [];
+    queue.length = 0;
+    savedQueue.forEach(id => {
+        if (validIds.has(id) && queue.indexOf(id) === -1) queue.push(id);
+    });
+
+    if (typeof saved.classLabel === 'string' && saved.classLabel) classLabel = saved.classLabel;
+    if (typeof saved.projectLabel === 'string' && saved.projectLabel) projectLabel = saved.projectLabel;
+    return true;
+}
+
+function saveClassState() {
+    const payload = JSON.stringify(serializeState());
+    try {
+        localStorage.setItem(CLASS_KEY, payload);
+    } catch (e) { /* storage blocked or full - not persisting is survivable */ }
+}
+
+function loadClassState() {
+    let raw;
+    try {
+        raw = localStorage.getItem(CLASS_KEY);
+    } catch (e) {
+        return;   // storage blocked - start from the placeholder class
+    }
+    if (!raw) return;
+
+    let saved;
+    try {
+        saved = JSON.parse(raw);   // saved data can be corrupt or from an older shape
+    } catch (e) {
+        return;
+    }
+    applyState(saved);
+}
+
+// Redraw everything from the current state. Used after any change that can
+// move students between seats or rewrite the roster.
+function renderAll() {
+    selectedQueueId = null;
+    setArmedMode(null);
+    renderHeader();
+    renderDesks();
+    renderQueue();
+}
+
+// --- Seat swapping -----------------------------------------------------
+function clearSwapPick() {
+    if (swapFirstId === null) return;
+    const el = document.getElementById('desk-' + swapFirstId);
+    if (el) el.classList.remove('swap-pick');
+    swapFirstId = null;
+}
+
+function pickForSwap(id) {
+    if (swapFirstId === null) {
+        swapFirstId = id;
+        const el = document.getElementById('desk-' + id);
+        if (el) el.classList.add('swap-pick');
+        return;
+    }
+    if (swapFirstId === id) {   // tapped the same desk again: cancel the pick
+        clearSwapPick();
+        return;
+    }
+
+    const a = desks.findIndex(d => d.id === swapFirstId);
+    const b = desks.findIndex(d => d.id === id);
+    clearSwapPick();
+    if (a === -1 || b === -1) return;
+
+    // `desks` order is seating order and each id belongs to a student, so
+    // swapping the two entries moves the students without disturbing the
+    // check line - a queued student keeps their place after changing seats.
+    const tmp = desks[a];
+    desks[a] = desks[b];
+    desks[b] = tmp;
+
+    renderDesks();
+    renderQueue();
+    setArmedMode(null);   // one swap per arm, so a stray tap can't reshuffle the room
+}
+
+btnSwap.addEventListener('click', () => setArmedMode('swap'));
+
+// --- Roster parsing ----------------------------------------------------
+// One student per line: "Name, homeroom, girl/boy". Homeroom and gender are
+// optional; gender only decides the desk colour, so anything unrecognised
+// falls back to a neutral desk rather than rejecting the line.
+function parseRoster(text) {
+    const students = [];
+    text.split('\n').forEach(line => {
+        const parts = line.split(',').map(part => part.trim());
+        const name = parts[0];
+        if (!name) return;
+        const g = (parts[2] || '').toLowerCase();
+        let gender = 'neutral';
+        if (g === 'g' || g === 'girl' || g === 'f' || g === 'female') gender = 'girl';
+        else if (g === 'b' || g === 'boy' || g === 'm' || g === 'male') gender = 'boy';
+        students.push({ name: name, homeroom: parts[1] || '', gender: gender });
+    });
+    return students;
+}
+
+function rosterToText() {
+    return desks.map(d => {
+        const bits = [d.name, d.homeroom];
+        if (d.gender !== 'neutral') bits.push(d.gender);
+        return bits.join(', ');
+    }).join('\n');
+}
+
+function studentKey(name, homeroom) {
+    return name.toLowerCase() + '|' + String(homeroom).toLowerCase();
+}
+
+function applyRoster(students) {
+    // Carry writing stages over for students who are still on the roster, so
+    // fixing a typo or adding a late arrival doesn't wipe the class's work.
+    const previous = new Map();
+    desks.forEach(d => {
+        const key = studentKey(d.name, d.homeroom);
+        if (!previous.has(key)) previous.set(key, []);
+        previous.get(key).push(d);
+    });
+    const takePrevious = key => {
+        const bucket = previous.get(key);
+        return (bucket && bucket.length) ? bucket.shift() : null;
+    };
+
+    const queuedKeys = queue
+        .map(id => deskById(id))
+        .filter(Boolean)
+        .map(d => studentKey(d.name, d.homeroom));
+
+    desks.length = 0;
+    students.forEach((student, i) => {
+        const prev = takePrevious(studentKey(student.name, student.homeroom));
+        desks.push({
+            id: i + 1,
+            name: student.name,
+            gender: student.gender,
+            homeroom: student.homeroom,
+            stage: prev ? prev.stage : 0,
+            queue: null
+        });
+    });
+
+    // Rebuild the line in its old order, dropping anyone no longer enrolled
+    const available = new Map();
+    desks.forEach(d => {
+        const key = studentKey(d.name, d.homeroom);
+        if (!available.has(key)) available.set(key, []);
+        available.get(key).push(d.id);
+    });
+    const rebuilt = [];
+    queuedKeys.forEach(key => {
+        const bucket = available.get(key);
+        if (bucket && bucket.length) rebuilt.push(bucket.shift());
+    });
+    queue.length = 0;
+    rebuilt.forEach(id => queue.push(id));
+
+    renderAll();
+}
+
+// --- Set Up Class modal ------------------------------------------------
+function openClassSetup() {
+    classNameInput.value = classLabel;
+    projectTitleInput.value = projectLabel;
+    rosterInput.value = rosterToText();
+    rosterHint.textContent = 'Seats fill left to right, in this order.';
+    rosterHint.classList.remove('error');
+    classOverlay.classList.add('open');
+    classNameInput.focus();
+}
+
+function closeClassSetup() {
+    classOverlay.classList.remove('open');
+}
+
+btnSetupClass.addEventListener('click', openClassSetup);
+classCloseBtn.addEventListener('click', closeClassSetup);
+classCancelBtn.addEventListener('click', closeClassSetup);
+classOverlay.addEventListener('click', function (e) {
+    if (e.target === classOverlay) closeClassSetup();
+});
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && classOverlay.classList.contains('open')) closeClassSetup();
+});
+
+classSaveBtn.addEventListener('click', function () {
+    const students = parseRoster(rosterInput.value);
+    if (!students.length) {
+        rosterHint.textContent = 'Add at least one student before saving.';
+        rosterHint.classList.add('error');
+        rosterInput.focus();
+        return;
+    }
+    const before = serializeState();
+    classLabel = classNameInput.value.trim() || classLabel;
+    projectLabel = projectTitleInput.value.trim() || projectLabel;
+    applyRoster(students);
+    closeClassSetup();
+    offerUndo('Class updated.', before);
+});
+
+// --- Reset All ---------------------------------------------------------
+btnResetAll.addEventListener('click', function () {
+    askConfirm(
+        'Reset All',
+        'Put every student back to Pre-Writing and clear the check line? The class roster is kept.',
+        'Reset',
+        function () {
+            const before = serializeState();
+            desks.forEach(d => { d.stage = 0; });
+            queue.length = 0;
+            renderAll();
+            offerUndo('Class reset to Pre-Writing.', before);
+        }
+    );
+});
+
+// --- Confirm dialog ----------------------------------------------------
+// An in-app dialog rather than window.confirm: native dialogs look out of
+// place in an installed app window and some platforms suppress them.
+const confirmOverlay = document.getElementById('confirm-overlay');
+const confirmTitle = document.getElementById('confirm-title');
+const confirmText = document.getElementById('confirm-text');
+const confirmYes = document.getElementById('confirm-yes');
+const confirmNo = document.getElementById('confirm-no');
+let confirmAction = null;
+
+function askConfirm(title, message, confirmLabel, onConfirm) {
+    confirmTitle.textContent = title;
+    confirmText.textContent = message;
+    confirmYes.textContent = confirmLabel;
+    confirmAction = onConfirm;
+    confirmOverlay.classList.add('open');
+    confirmNo.focus();
+}
+
+function closeConfirm() {
+    confirmOverlay.classList.remove('open');
+    confirmAction = null;
+}
+
+confirmYes.addEventListener('click', function () {
+    const act = confirmAction;
+    closeConfirm();
+    if (act) act();
+});
+confirmNo.addEventListener('click', closeConfirm);
+confirmOverlay.addEventListener('click', function (e) {
+    if (e.target === confirmOverlay) closeConfirm();
+});
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && confirmOverlay.classList.contains('open')) closeConfirm();
+});
+
+// --- Undo ---------------------------------------------------------------
+// Reset All and saving a roster can throw away a morning's work, so each one
+// keeps a snapshot the teacher can put back for a few seconds afterwards.
+const undoToast = document.getElementById('undo-toast');
+const undoMessage = document.getElementById('undo-message');
+const undoBtn = document.getElementById('undo-btn');
+const UNDO_TIMEOUT_MS = 15000;
+let undoSnapshot = null;
+let undoTimer = null;
+
+function offerUndo(message, snapshot) {
+    undoSnapshot = snapshot;
+    undoMessage.textContent = message;
+    undoToast.classList.add('show');
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(hideUndo, UNDO_TIMEOUT_MS);
+}
+
+function hideUndo() {
+    clearTimeout(undoTimer);
+    undoToast.classList.remove('show');
+    undoSnapshot = null;
+}
+
+undoBtn.addEventListener('click', function () {
+    if (!undoSnapshot) return;
+    if (applyState(undoSnapshot)) renderAll();
+    hideUndo();
+});
+
+// ============================================
+// Welcome splash + warm-up song
+// ============================================
+// The splash is visible from CSS on load so the board never flashes the desk
+// grid first. Everything below is about getting out of it again.
+const splash = document.getElementById('splash');
+const splashSky = document.getElementById('splash-sky');
+const splashTitle = document.getElementById('splash-title');
+const splashClass = document.getElementById('splash-class');
+const btnEnterApp = document.getElementById('btn-enter-app');
+const btnPlaySong = document.getElementById('btn-play-song');
+const btnCloseSong = document.getElementById('btn-close-song');
+const btnSongDone = document.getElementById('btn-song-done');
+const songStage = document.getElementById('song-stage');
+const songFallback = document.getElementById('song-fallback');
+const warmupVideo = document.getElementById('warmup-video');
+
+const prefersReducedMotion = window.matchMedia
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// Wrap each letter so the title can bounce a letter at a time. The <h1> keeps
+// its text, so screen readers and the page title are unaffected.
+function animateSplashTitle() {
+    if (prefersReducedMotion) return;
+    const text = splashTitle.textContent;
+    splashTitle.textContent = '';
+    text.split('').forEach((ch, i) => {
+        const span = document.createElement('span');
+        span.className = ch === ' ' ? 'ltr space' : 'ltr';
+        span.textContent = ch === ' ' ? ' ' : ch;
+        span.style.animationDelay = (i * 0.08).toFixed(2) + 's';
+        splashTitle.appendChild(span);
+    });
+}
+
+// Letters and pencils drifting up behind the card
+const SPLASH_FLOATERS = ['A', 'B', 'C', 'a', 'b', 'c', '✏️', '✨', '⭐', '\u{1F4DA}', '1', '2', '3'];
+function startSplashSky() {
+    if (prefersReducedMotion) return;
+    for (let i = 0; i < 18; i++) {
+        const el = document.createElement('span');
+        el.className = 'splash-float';
+        el.textContent = SPLASH_FLOATERS[Math.floor(Math.random() * SPLASH_FLOATERS.length)];
+        el.style.left = (Math.random() * 96) + '%';
+        el.style.fontSize = (1.5 + Math.random() * 2.4).toFixed(2) + 'rem';
+        el.style.animationDuration = (11 + Math.random() * 12).toFixed(1) + 's';
+        el.style.animationDelay = (-Math.random() * 18).toFixed(1) + 's';
+        el.style.setProperty('--spin', (Math.random() * 90 - 45).toFixed(0) + 'deg');
+        splashSky.appendChild(el);
+    }
+}
+
+function showSplashClass() {
+    const bits = [];
+    if (classLabel) bits.push(classLabel);
+    if (projectLabel) bits.push(projectLabel);
+    splashClass.textContent = bits.join('  •  ');
+}
+
+function stopSong() {
+    try {
+        warmupVideo.pause();
+        warmupVideo.currentTime = 0;
+    } catch (e) { /* nothing playing yet */ }
+}
+
+function closeSong() {
+    stopSong();
+    songStage.classList.remove('open');
+    btnPlaySong.focus();
+}
+
+let splashDismissed = false;
+function enterApp() {
+    if (splashDismissed) return;
+    splashDismissed = true;
+    stopSong();
+    splash.classList.add('leaving');
+    const finish = () => {
+        splash.classList.add('hidden');
+        splashSky.innerHTML = '';   // stop the drifting letters animating off-screen
+        btnReady.focus();
+    };
+    if (prefersReducedMotion) finish();
+    else setTimeout(finish, 450);
+}
+
+btnEnterApp.addEventListener('click', enterApp);
+btnSongDone.addEventListener('click', enterApp);
+btnCloseSong.addEventListener('click', closeSong);
+
+btnPlaySong.addEventListener('click', function () {
+    songStage.classList.add('open');
+    warmupVideo.preload = 'auto';
+    // Started from a tap, so the browser lets it play with sound.
+    const started = warmupVideo.play();
+    if (started && started.catch) started.catch(() => { /* teacher can use the controls */ });
+    btnCloseSong.focus();
+});
+
+// If the file or its codec is unavailable, say so and offer the download
+// rather than leaving a silent black box on the board.
+warmupVideo.addEventListener('error', function () {
+    songFallback.hidden = false;
+});
+
+songStage.addEventListener('click', function (e) {
+    if (e.target === songStage) closeSong();
+});
+
+document.addEventListener('keydown', function (e) {
+    if (splashDismissed) return;
+    if (e.key === 'Escape') {
+        // Escape backs out of the song first, then off the splash entirely
+        if (songStage.classList.contains('open')) closeSong();
+        else enterApp();
+        return;
+    }
+    // Enter goes straight to the board, unless a button already has focus
+    if (e.key === 'Enter' && !(document.activeElement && document.activeElement.tagName === 'BUTTON')) {
+        enterApp();
+    }
+});
+
+animateSplashTitle();
+startSplashSky();
+showSplashClass();
+btnEnterApp.focus();
