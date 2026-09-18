@@ -31,8 +31,8 @@ const placeholderRoster = [
     ['Nora', 'girl', 209], ['Caleb', 'boy', 205]
 ];
 
-// Queue positions matching the placeholder "Now Checking" / "Waiting" sidebar content
-const queuePositions = { 'Sachiko': 1, 'Jimmy': 2, 'Sam': 3, 'Jenny': 4, 'Fred': 5, 'Sarah': 6, 'Mike': 7, 'Leo': 8 };
+// Students already lined up when the page loads, in line order
+const initialQueueNames = ['Sachiko', 'Jimmy', 'Sam', 'Jenny', 'Fred', 'Sarah', 'Mike', 'Leo'];
 
 // Spread starting stages across the grid just so the demo shows real variety
 const starterStages = [0, 1, 0, 2, 4, 0, 1, 2, 0, 3, 1, 0, 2, 0, 1, 0, 3, 1, 0, 2, 0, 1, 4, 0, 2, 0, 1, 0, 3, 0];
@@ -43,14 +43,34 @@ const desks = placeholderRoster.map(([name, gender, homeroom], i) => ({
     gender,
     homeroom,
     stage: starterStages[i],
-    queue: queuePositions[name] || null
+    queue: null   // line position, kept in sync with `queue` below
 }));
+
+function deskById(id) {
+    return desks.find(d => d.id === id);
+}
+
+// ============================================
+// Queue state
+// ============================================
+// The single source of truth for the check line: desk ids in line order.
+// queue[0] is the student being checked right now ("Now Checking"); the
+// rest are the waiting list. Every desk badge and sidebar chiclet is
+// derived from this array, so mutating it + renderQueue() is the only way
+// the line ever changes.
+const queue = initialQueueNames
+    .map(name => desks.find(d => d.name === name))
+    .filter(Boolean)
+    .map(d => d.id);
 
 // ============================================
 // Desk rendering
 // ============================================
 const classroomGrid = document.getElementById('classroom-grid');
+// Only one arm mode at a time: tapping a desk either bumps its writing
+// stage (Change Level) or puts that student in the check line (Ready to Check).
 let changeLevelArmed = false;
+let readyArmed = false;
 
 function deskCardHTML(desk) {
     const stage = stages[desk.stage];
@@ -83,12 +103,17 @@ function renderDesks() {
 }
 
 function updateArmableState() {
+    const armed = changeLevelArmed || readyArmed;
     document.querySelectorAll('.desk').forEach(el => {
-        el.classList.toggle('armable', changeLevelArmed);
+        el.classList.toggle('armable', armed);
     });
 }
 
 function onDeskTap(id) {
+    if (readyArmed) {
+        addToQueue(id);
+        return;
+    }
     if (!changeLevelArmed) return;
     advanceDeskStage(id);
 }
@@ -267,10 +292,12 @@ function playCelebrationSound() {
 const btnChangeLevel = document.getElementById('btn-next-step');
 btnChangeLevel.addEventListener('click', () => {
     changeLevelArmed = !changeLevelArmed;
+    if (changeLevelArmed) setReadyArmed(false);
     btnChangeLevel.classList.toggle('armed', changeLevelArmed);
     updateArmableState();
 });
 
+syncDeskQueueNumbers();
 renderDesks();
 
 // ============================================
@@ -752,24 +779,202 @@ controlsHandle.addEventListener('click', function () {
     controlsHandle.setAttribute('aria-label', isExpanded ? 'Hide timer controls' : 'Show timer controls');
 });
 
-const chiclets = document.querySelectorAll('.chiclet');
+// ============================================
+// Check queue: rendering + teacher actions
+// ============================================
+const activeSlot = document.getElementById('active-slot');
 const moveArrows = document.getElementById('move-arrows');
+const btnMoveUp = document.getElementById('btn-move-up');
+const btnMoveDown = document.getElementById('btn-move-down');
+const btnReturnSeat = document.getElementById('btn-return-seat');
+const btnBackOfLine = document.getElementById('btn-back-of-line');
+const btnDone = document.getElementById('btn-done');
+const btnReady = document.getElementById('btn-ready');
+const scrollIndicator = document.getElementById('queue-scroll-indicator');
 
-chiclets.forEach(chiclet => {
-    chiclet.addEventListener('click', () => {
-        if (!isDragging) {
-            const wasSelected = chiclet.classList.contains('selected');
-            chiclets.forEach(c => c.classList.remove('selected'));
-            
-            if (!wasSelected) {
-                chiclet.classList.add('selected');
-                moveArrows.classList.add('visible');
-            } else {
-                moveArrows.classList.remove('visible');
-            }
-        }
+// Desk id of the chiclet the teacher has tapped, or null. Actions with no
+// selection fall through to whoever is being checked right now.
+let selectedQueueId = null;
+
+// Copy line positions from `queue` onto the desk objects so desk cards,
+// which render from `desk.queue`, stay in step with the sidebar.
+function syncDeskQueueNumbers() {
+    desks.forEach(d => { d.queue = null; });
+    queue.forEach((id, i) => {
+        const desk = deskById(id);
+        if (desk) desk.queue = i + 1;
     });
+}
+
+// Patch the badges in place rather than re-rendering the grid, so a desk
+// mid-wiggle or mid-sparkle keeps its animation.
+function updateDeskBadges() {
+    desks.forEach(desk => {
+        const el = document.getElementById('desk-' + desk.id);
+        if (!el) return;
+        const badge = el.querySelector('.desk-badge');
+        if (!badge) return;
+        badge.textContent = desk.queue ? desk.queue : '';
+        badge.classList.toggle('hidden', !desk.queue);
+    });
+}
+
+function chicletHTML(desk, position) {
+    return '<span>' + desk.name + ' ' + desk.homeroom + '</span>' +
+           '<span class="queue-badge">' + position + '</span>';
+}
+
+function renderQueue() {
+    syncDeskQueueNumbers();
+
+    // A student who left the line can't stay selected
+    if (selectedQueueId !== null && queue.indexOf(selectedQueueId) === -1) {
+        selectedQueueId = null;
+    }
+
+    // "Now Checking" slot
+    activeSlot.innerHTML = '';
+    if (queue.length) {
+        const desk = deskById(queue[0]);
+        const el = document.createElement('div');
+        el.className = 'chiclet active-chiclet' + (selectedQueueId === desk.id ? ' selected' : '');
+        el.dataset.deskId = String(desk.id);
+        el.innerHTML = chicletHTML(desk, 1);
+        activeSlot.appendChild(el);
+    } else {
+        const el = document.createElement('div');
+        el.className = 'queue-empty';
+        el.textContent = 'Nobody in line';
+        activeSlot.appendChild(el);
+    }
+
+    // Waiting list (everyone behind the student being checked)
+    queueList.innerHTML = '';
+    const waiting = queue.slice(1);
+    if (waiting.length) {
+        waiting.forEach((id, i) => {
+            const desk = deskById(id);
+            const li = document.createElement('li');
+            li.className = 'chiclet' + (selectedQueueId === id ? ' selected' : '');
+            li.dataset.deskId = String(id);
+            li.innerHTML = chicletHTML(desk, i + 2);
+            queueList.appendChild(li);
+        });
+    } else {
+        const li = document.createElement('li');
+        li.className = 'queue-empty';
+        li.textContent = 'No one waiting';
+        queueList.appendChild(li);
+    }
+
+    // The "..." hint only means something when the list actually overflows
+    scrollIndicator.classList.toggle('hidden', waiting.length < 5);
+
+    moveArrows.classList.toggle('visible', selectedQueueId !== null);
+
+    const idx = selectedQueueId === null ? -1 : queue.indexOf(selectedQueueId);
+    btnMoveUp.disabled = idx <= 0;
+    btnMoveDown.disabled = idx === -1 || idx >= queue.length - 1;
+
+    const hasTarget = queueTargetId() !== null;
+    btnReturnSeat.disabled = !hasTarget;
+    btnBackOfLine.disabled = !hasTarget;
+    btnDone.disabled = !hasTarget;
+
+    updateDeskBadges();
+}
+
+// Actions act on the selected chiclet, or on the student being checked
+// when nothing is selected - that's the common case for a teacher.
+function queueTargetId() {
+    if (selectedQueueId !== null) return selectedQueueId;
+    return queue.length ? queue[0] : null;
+}
+
+function addToQueue(id) {
+    if (queue.indexOf(id) !== -1) return;   // already in line
+    queue.push(id);
+    renderQueue();
+}
+
+function removeFromQueue(id) {
+    const i = queue.indexOf(id);
+    if (i === -1) return false;
+    queue.splice(i, 1);
+    if (selectedQueueId === id) selectedQueueId = null;
+    return true;
+}
+
+function moveSelected(delta) {
+    if (selectedQueueId === null) return;
+    const i = queue.indexOf(selectedQueueId);
+    const j = i + delta;
+    if (i === -1 || j < 0 || j >= queue.length) return;
+    queue[i] = queue[j];
+    queue[j] = selectedQueueId;
+    renderQueue();
+}
+
+// Tap a chiclet to select it, tap again to deselect
+function onChicletClick(e) {
+    if (isDragging) return;
+    const el = e.target.closest('[data-desk-id]');
+    if (!el) return;
+    const id = Number(el.dataset.deskId);
+    selectedQueueId = (selectedQueueId === id) ? null : id;
+    renderQueue();
+}
+
+activeSlot.addEventListener('click', onChicletClick);
+queueList.addEventListener('click', onChicletClick);
+
+btnMoveUp.addEventListener('click', () => moveSelected(-1));
+btnMoveDown.addEventListener('click', () => moveSelected(1));
+
+// Sent back to work without being checked off - just leaves the line
+btnReturnSeat.addEventListener('click', () => {
+    const id = queueTargetId();
+    if (id === null) return;
+    removeFromQueue(id);
+    renderQueue();
 });
+
+// Still needs checking, but someone else goes first
+btnBackOfLine.addEventListener('click', () => {
+    const id = queueTargetId();
+    if (id === null) return;
+    if (removeFromQueue(id)) queue.push(id);
+    renderQueue();
+});
+
+// Check passed: leaves the line and moves up a writing stage
+btnDone.addEventListener('click', () => {
+    const id = queueTargetId();
+    if (id === null) return;
+    removeFromQueue(id);
+    renderQueue();
+    const desk = deskById(id);
+    if (desk && desk.stage < stages.length - 1) advanceDeskStage(id);
+});
+
+// ============================================
+// Ready to Check button
+// ============================================
+function setReadyArmed(on) {
+    readyArmed = on;
+    btnReady.classList.toggle('armed', readyArmed);
+}
+
+btnReady.addEventListener('click', () => {
+    setReadyArmed(!readyArmed);
+    if (readyArmed && changeLevelArmed) {
+        changeLevelArmed = false;
+        btnChangeLevel.classList.remove('armed');
+    }
+    updateArmableState();
+});
+
+renderQueue();
 
 // ============================================
 // Timer Settings Modal

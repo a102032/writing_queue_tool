@@ -548,6 +548,14 @@ body {
     50% { box-shadow: 0 0 0 7px rgba(234,179,8,0.25), 0 0 26px 8px rgba(234,179,8,0.9); }
 }
 .student-btn.ready { background: #16a34a; color: white; line-height: 1.2; }
+.student-btn.ready.armed {
+    box-shadow: 0 0 0 4px rgba(22,163,74,0.4), 0 0 18px 4px rgba(22,163,74,0.7);
+    animation: readyArmedPulse 1.4s ease-in-out infinite;
+}
+@keyframes readyArmedPulse {
+    0%, 100% { box-shadow: 0 0 0 4px rgba(22,163,74,0.4), 0 0 18px 4px rgba(22,163,74,0.7); }
+    50% { box-shadow: 0 0 0 7px rgba(22,163,74,0.25), 0 0 26px 8px rgba(22,163,74,0.9); }
+}
 
 .center-column { flex: 1; display: flex; flex-direction: column; gap: 15px; height: 100%; min-width: 0; min-height: 0; }
 .slim-header {
@@ -725,13 +733,14 @@ body {
 .action-btn.return { background: #d97706; color: white; }
 .action-btn.back { background: #c2410c; color: white; }
 .action-btn.done { background: #16a34a; color: white; }
+.action-btn:disabled, .arrow-btn:disabled { opacity: 0.4; cursor: default; }
 
 .active-title { margin: 10px 0 2px 0; font-size: 0.9rem; text-align: center; }
-.active-chiclet {
-    background: #f0fdf4; border: 2px solid #39ff14; color: #15803d; 
+.chiclet.active-chiclet {
+    background: #f0fdf4; border: 2px solid #39ff14; color: #15803d;
     box-shadow: 0 0 12px 2px rgba(57, 255, 20, 0.6); margin-bottom: 6px; cursor: pointer;
 }
-.active-chiclet .queue-badge { background: #22c55e; color: white; }
+.chiclet.active-chiclet .queue-badge { background: #22c55e; color: white; }
 
 .waiting-queue-box {
     background: #cbd5e1; border-radius: 8px; padding: 8px 4px 0 4px;
@@ -760,3 +769,12 @@ body {
 }
 
 .scroll-indicator { text-align: center; font-weight: bold; color: #475569; padding-top: 4px; user-select: none; }
+.scroll-indicator.hidden { visibility: hidden; }
+
+.queue-empty {
+    text-align: center; font-size: 0.8rem; font-weight: bold; color: #64748b;
+    padding: 8px 4px; user-select: none; list-style: none;
+}
+.active-slot .queue-empty {
+    background: white; border: 2px dashed #cbd5e1; border-radius: 8px; margin-bottom: 6px;
+}

@@ -102,34 +102,24 @@
             <div class="bottom-controls">
                 
                 <div class="move-arrows" id="move-arrows">
-                    <button class="arrow-btn" id="btn-move-up">▲</button>
-                    <button class="arrow-btn" id="btn-move-down">▼</button>
+                    <button class="arrow-btn" id="btn-move-up" aria-label="Move up in line">▲</button>
+                    <button class="arrow-btn" id="btn-move-down" aria-label="Move down in line">▼</button>
                 </div>
 
                 <div class="action-buttons">
-                    <button class="action-btn return">Return to Seat</button>
-                    <button class="action-btn back">Back of Line</button>
-                    <button class="action-btn done">Done</button>
+                    <button class="action-btn return" id="btn-return-seat">Return to Seat</button>
+                    <button class="action-btn back" id="btn-back-of-line">Back of Line</button>
+                    <button class="action-btn done" id="btn-done">Done</button>
                 </div>
 
                 <h4 class="active-title">Now Checking</h4>
-                <div class="chiclet active-chiclet">
-                    <span>Sachiko 203</span>
-                    <span class="queue-badge">1</span>
-                </div>
+                <!-- Now Checking chiclet + waiting list are rendered by app.js from queue state -->
+                <div class="active-slot" id="active-slot"></div>
 
                 <div class="waiting-queue-box">
                     <h4>Waiting:</h4>
-                    <ul id="queue-list">
-                        <li class="chiclet"><span>Jimmy 203</span><span class="queue-badge">2</span></li>
-                        <li class="chiclet"><span>Sam 201</span><span class="queue-badge">3</span></li>
-                        <li class="chiclet"><span>Jenny 205</span><span class="queue-badge">4</span></li>
-                        <li class="chiclet"><span>Fred 208</span><span class="queue-badge">5</span></li>
-                        <li class="chiclet"><span>Sarah 202</span><span class="queue-badge">6</span></li>
-                        <li class="chiclet"><span>Mike 210</span><span class="queue-badge">7</span></li>
-                        <li class="chiclet"><span>Leo 204</span><span class="queue-badge">8</span></li>
-                    </ul>
-                    <div class="scroll-indicator">...</div>
+                    <ul id="queue-list"></ul>
+                    <div class="scroll-indicator" id="queue-scroll-indicator">...</div>
                 </div>
             </div>
         </div>
