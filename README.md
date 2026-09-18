@@ -65,10 +65,18 @@ warm-up song can be played again part way through a lesson.
 **Change Level** — tap it, then tap a desk to move that student to the next writing stage
 (Pre-Writing → Sentences → Paragraphs → Publishing → Done), with a celebration at the top.
 
-**Swap Seats** — tap it, then tap two desks to swap them. Tap the same desk twice to cancel.
-A student in line keeps their place after moving.
+**Swap Seats** — tap it once to turn swapping on, then tap two desks to swap them. It stays
+on, so you can keep swapping pairs; tap **Swap Seats** again when you're finished. Tap the
+same desk twice to cancel a pick. A student in line keeps their place after moving.
+
+The room always shows **30 desks**, however many students are in the class. Spare desks sit
+empty, and you can swap a student into one, so the board can be arranged to match the real
+room — gaps and all.
 
 **Reset All** — puts everyone back to Pre-Writing and clears the line, keeping the roster.
+
+**Waiting?** — the pencil next to that heading changes what students can do while they wait
+for a check, one thing per line. Each class keeps its own list.
 
 **Timer** — the handle under the clock slides open the controls. The gear sets the alarm
 sound, volume, and whether the clock turns red near the end.

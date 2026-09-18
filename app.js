@@ -23,10 +23,29 @@ const stageIcons = {
 // ============================================
 // The app opens with nothing set up at all - no class, no writing project and
 // no students. "Set Up Class" in Teacher Controls is how the first one is made.
+//
+// `desks` is a map of SEATS, not a list of students: each entry is either a
+// student or null for an empty seat. A room always shows at least SEAT_COUNT
+// seats so the board can be arranged to match the real room, empty desks and
+// all. A student's index in here is where they sit; their `id` travels with
+// them when seats are swapped.
+const SEAT_COUNT = 30;
 const desks = [];
 
 function deskById(id) {
-    return desks.find(d => d.id === id);
+    return desks.find(d => d && d.id === id);
+}
+
+function studentCount() {
+    return desks.reduce((n, d) => n + (d ? 1 : 0), 0);
+}
+
+// Pad out to a full room, and never drop a seat that holds someone
+function padSeats(list) {
+    const out = list.slice();
+    while (out.length < SEAT_COUNT) out.push(null);
+    while (out.length > SEAT_COUNT && out[out.length - 1] === null) out.pop();
+    return out;
 }
 
 // The single source of truth for the check line: desk ids in line order.
@@ -39,6 +58,11 @@ const queue = [];
 // Shown in the header, edited in the Set Up Class modal. Empty until set up.
 let classLabel = '';
 let projectLabel = '';
+
+// What students can do while they wait for a check. Per class, so a different
+// class or project can have a different routine.
+const DEFAULT_WAITING = ['Illustrate', 'Spelling', 'Read'];
+let waitingList = DEFAULT_WAITING.slice();
 
 // Declared up here because startup calls loadClassState() long before the
 // class-setup section at the bottom of this file is evaluated.
@@ -59,7 +83,7 @@ const classroomGrid = document.getElementById('classroom-grid');
 // ('level'), put the student in the check line ('ready'), or pick it for a
 // seat swap ('swap'). Exactly one mode is armed at a time.
 let armedMode = null;
-let swapFirstId = null;
+let swapFirstSeat = null;   // index of the first seat picked in a swap
 
 function deskCardHTML(desk) {
     const stage = stages[desk.stage];
@@ -83,7 +107,7 @@ function renderDesks() {
 
     // Nothing set up yet: say so and offer the way in, rather than showing
     // an empty white rectangle that looks broken.
-    if (!desks.length) {
+    if (!studentCount()) {
         classroomGrid.classList.add('empty');
         const empty = document.createElement('div');
         empty.className = 'grid-empty';
@@ -102,12 +126,17 @@ function renderDesks() {
     }
 
     classroomGrid.classList.remove('empty');
-    desks.forEach(desk => {
+    desks.forEach((desk, seat) => {
         const el = document.createElement('div');
-        el.className = 'desk ' + desk.gender;
-        el.id = 'desk-' + desk.id;
-        el.innerHTML = deskCardHTML(desk);
-        el.addEventListener('click', () => onDeskTap(desk.id));
+        el.dataset.seat = String(seat);
+        if (desk) {
+            el.className = 'desk ' + desk.gender;
+            el.id = 'desk-' + desk.id;
+            el.innerHTML = deskCardHTML(desk);
+        } else {
+            el.className = 'desk empty-seat';
+        }
+        el.addEventListener('click', () => onDeskTap(seat));
         classroomGrid.appendChild(el);
     });
     layoutDeskGrid();
@@ -158,8 +187,8 @@ function updateArmableState() {
     document.querySelectorAll('.desk').forEach(el => {
         el.classList.toggle('armable', armedMode !== null);
     });
-    if (swapFirstId !== null) {
-        const el = document.getElementById('desk-' + swapFirstId);
+    if (swapFirstSeat !== null) {
+        const el = classroomGrid.querySelector('[data-seat="' + swapFirstSeat + '"]');
         if (el) el.classList.add('swap-pick');
     }
 }
@@ -174,10 +203,14 @@ function setArmedMode(mode) {
     updateArmableState();
 }
 
-function onDeskTap(id) {
-    if (armedMode === 'ready') addToQueue(id);
-    else if (armedMode === 'level') advanceDeskStage(id);
-    else if (armedMode === 'swap') pickForSwap(id);
+function onDeskTap(seat) {
+    // Seats are swappable whether or not anyone is sitting there - that is how
+    // a room with gaps in it gets arranged. The other modes need a student.
+    if (armedMode === 'swap') { pickForSwap(seat); return; }
+    const desk = desks[seat];
+    if (!desk) return;
+    if (armedMode === 'ready') addToQueue(desk.id);
+    else if (armedMode === 'level') advanceDeskStage(desk.id);
 }
 
 function advanceDeskStage(id) {
@@ -860,7 +893,7 @@ let selectedQueueId = null;
 // Copy line positions from `queue` onto the desk objects so desk cards,
 // which render from `desk.queue`, stay in step with the sidebar.
 function syncDeskQueueNumbers() {
-    desks.forEach(d => { d.queue = null; });
+    desks.forEach(d => { if (d) d.queue = null; });
     queue.forEach((id, i) => {
         const desk = deskById(id);
         if (desk) desk.queue = i + 1;
@@ -871,6 +904,7 @@ function syncDeskQueueNumbers() {
 // mid-wiggle or mid-sparkle keeps its animation.
 function updateDeskBadges() {
     desks.forEach(desk => {
+        if (!desk) return;
         const el = document.getElementById('desk-' + desk.id);
         if (!el) return;
         const badge = el.querySelector('.desk-badge');
@@ -1149,10 +1183,11 @@ function serializeState() {
     return {
         classLabel: classLabel,
         projectLabel: projectLabel,
-        desks: desks.map(d => ({
+        waitingList: waitingList.slice(),
+        desks: desks.map(d => d ? {
             id: d.id, name: d.name, gender: d.gender,
             homeroom: d.homeroom, stage: d.stage
-        })),
+        } : null),
         queue: queue.slice()
     };
 }
@@ -1168,17 +1203,20 @@ function makeClassId() {
 function normalizeClass(saved) {
     if (!saved || !Array.isArray(saved.desks)) return null;
 
-    const desksOut = saved.desks
-        .filter(d => d && typeof d.name === 'string' && d.name.trim())
-        .map(d => ({
+    // Seat order matters, so a bad entry becomes an empty seat rather than
+    // shifting everyone behind it along one.
+    const desksOut = padSeats(saved.desks.map(d => {
+        if (!d || typeof d.name !== 'string' || !d.name.trim()) return null;
+        return {
             id: d.id,
             name: d.name,
             gender: (d.gender === 'boy' || d.gender === 'girl') ? d.gender : 'neutral',
             homeroom: d.homeroom == null ? '' : d.homeroom,
             stage: (Number.isInteger(d.stage) && d.stage >= 0 && d.stage < stages.length) ? d.stage : 0
-        }));
+        };
+    }));
 
-    const validIds = new Set(desksOut.map(d => d.id));
+    const validIds = new Set(desksOut.filter(Boolean).map(d => d.id));
     const queueOut = [];
     (Array.isArray(saved.queue) ? saved.queue : []).forEach(id => {
         if (validIds.has(id) && queueOut.indexOf(id) === -1) queueOut.push(id);
@@ -1188,6 +1226,10 @@ function normalizeClass(saved) {
         id: (typeof saved.id === 'string' && saved.id) ? saved.id : makeClassId(),
         classLabel: typeof saved.classLabel === 'string' ? saved.classLabel : '',
         projectLabel: typeof saved.projectLabel === 'string' ? saved.projectLabel : '',
+        // Classes saved before this existed simply get the default routine
+        waitingList: Array.isArray(saved.waitingList)
+            ? saved.waitingList.filter(t => typeof t === 'string' && t.trim()).map(t => t.trim())
+            : DEFAULT_WAITING.slice(),
         desks: desksOut,
         queue: queueOut
     };
@@ -1200,15 +1242,16 @@ function applyState(saved) {
     if (!rec) return false;
 
     desks.length = 0;
-    rec.desks.forEach(d => desks.push({
+    rec.desks.forEach(d => desks.push(d ? {
         id: d.id, name: d.name, gender: d.gender,
         homeroom: d.homeroom, stage: d.stage, queue: null
-    }));
+    } : null));
     queue.length = 0;
     rec.queue.forEach(id => queue.push(id));
 
     classLabel = rec.classLabel;
     projectLabel = rec.projectLabel;
+    waitingList = rec.waitingList.slice();
     return true;
 }
 
@@ -1238,6 +1281,11 @@ function seedDefaultClass() {
     desks.length = 0;
     queue.length = 0;
     classes = [currentClassRecord()];
+}
+
+// A seat map for a class with nobody in it yet
+function emptyRoom() {
+    return padSeats([]);
 }
 
 function readStored(key) {
@@ -1283,6 +1331,7 @@ function renderAll() {
     selectedQueueId = null;
     setArmedMode(null);
     renderHeader();
+    renderWaitingList();
     renderClassSwitcher();
     renderDesks();
     renderQueue();
@@ -1290,39 +1339,43 @@ function renderAll() {
 
 // --- Seat swapping -----------------------------------------------------
 function clearSwapPick() {
-    if (swapFirstId === null) return;
-    const el = document.getElementById('desk-' + swapFirstId);
+    if (swapFirstSeat === null) return;
+    const el = classroomGrid.querySelector('[data-seat="' + swapFirstSeat + '"]');
     if (el) el.classList.remove('swap-pick');
-    swapFirstId = null;
+    swapFirstSeat = null;
 }
 
-function pickForSwap(id) {
-    if (swapFirstId === null) {
-        swapFirstId = id;
-        const el = document.getElementById('desk-' + id);
+function pickForSwap(seat) {
+    if (swapFirstSeat === null) {
+        swapFirstSeat = seat;
+        const el = classroomGrid.querySelector('[data-seat="' + seat + '"]');
         if (el) el.classList.add('swap-pick');
         return;
     }
-    if (swapFirstId === id) {   // tapped the same desk again: cancel the pick
+    if (swapFirstSeat === seat) {   // tapped the same desk again: cancel the pick
         clearSwapPick();
         return;
     }
 
-    const a = desks.findIndex(d => d.id === swapFirstId);
-    const b = desks.findIndex(d => d.id === id);
+    const a = swapFirstSeat;
+    const b = seat;
     clearSwapPick();
-    if (a === -1 || b === -1) return;
+    if (a < 0 || b < 0 || a >= desks.length || b >= desks.length) return;
 
     // `desks` order is seating order and each id belongs to a student, so
     // swapping the two entries moves the students without disturbing the
     // check line - a queued student keeps their place after changing seats.
+    // Either end may be an empty seat, which is how a student is moved into
+    // a free desk.
     const tmp = desks[a];
     desks[a] = desks[b];
     desks[b] = tmp;
 
     renderDesks();
     renderQueue();
-    setArmedMode(null);   // one swap per arm, so a stray tap can't reshuffle the room
+    saveClassState();
+    // Stay armed: rearranging a room means several swaps in a row. Tap
+    // Swap Seats again to finish.
 }
 
 btnSwap.addEventListener('click', () => setArmedMode('swap'));
@@ -1347,7 +1400,7 @@ function parseRoster(text) {
 }
 
 function rosterToText() {
-    return desks.map(d => {
+    return desks.filter(Boolean).map(d => {
         const bits = [d.name, d.homeroom];
         if (d.gender !== 'neutral') bits.push(d.gender);
         return bits.join(', ');
@@ -1362,7 +1415,7 @@ function applyRoster(students) {
     // Carry writing stages over for students who are still on the roster, so
     // fixing a typo or adding a late arrival doesn't wipe the class's work.
     const previous = new Map();
-    desks.forEach(d => {
+    desks.filter(Boolean).forEach(d => {
         const key = studentKey(d.name, d.homeroom);
         if (!previous.has(key)) previous.set(key, []);
         previous.get(key).push(d);
@@ -1377,22 +1430,25 @@ function applyRoster(students) {
         .filter(Boolean)
         .map(d => studentKey(d.name, d.homeroom));
 
-    desks.length = 0;
-    students.forEach((student, i) => {
+    // Students fill the seats in roster order; the rest of the room stays
+    // empty, ready to be arranged to match the real classroom.
+    const seated = students.map((student, i) => {
         const prev = takePrevious(studentKey(student.name, student.homeroom));
-        desks.push({
+        return {
             id: i + 1,
             name: student.name,
             gender: student.gender,
             homeroom: student.homeroom,
             stage: prev ? prev.stage : 0,
             queue: null
-        });
+        };
     });
+    desks.length = 0;
+    padSeats(seated).forEach(d => desks.push(d));
 
     // Rebuild the line in its old order, dropping anyone no longer enrolled
     const available = new Map();
-    desks.forEach(d => {
+    desks.filter(Boolean).forEach(d => {
         const key = studentKey(d.name, d.homeroom);
         if (!available.has(key)) available.set(key, []);
         available.get(key).push(d.id);
@@ -1440,6 +1496,61 @@ classSwitcher.addEventListener('change', function () {
     switchToClass(classSwitcher.value);
 });
 
+// --- What students do while they wait ---------------------------------
+const waitingListEl = document.getElementById('waiting-list');
+const waitingOverlay = document.getElementById('waiting-overlay');
+const waitingInput = document.getElementById('waiting-input');
+const waitingHint = document.getElementById('waiting-hint');
+const btnEditWaiting = document.getElementById('btn-edit-waiting');
+const btnWaitingSave = document.getElementById('waiting-save');
+const btnWaitingCancel = document.getElementById('waiting-cancel');
+const btnWaitingClose = document.getElementById('waiting-close');
+
+function renderWaitingList() {
+    waitingListEl.innerHTML = '';
+    waitingList.forEach(item => {
+        const li = document.createElement('li');
+        li.textContent = item;
+        waitingListEl.appendChild(li);
+    });
+}
+
+function openWaitingEditor() {
+    waitingInput.value = waitingList.join('\n');
+    waitingHint.textContent = 'Keep them short \u2014 they show in the narrow side panel.';
+    waitingHint.classList.remove('error');
+    waitingOverlay.classList.add('open');
+    waitingInput.focus();
+}
+
+function closeWaitingEditor() {
+    waitingOverlay.classList.remove('open');
+}
+
+btnEditWaiting.addEventListener('click', openWaitingEditor);
+btnWaitingCancel.addEventListener('click', closeWaitingEditor);
+btnWaitingClose.addEventListener('click', closeWaitingEditor);
+waitingOverlay.addEventListener('click', function (e) {
+    if (e.target === waitingOverlay) closeWaitingEditor();
+});
+document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && waitingOverlay.classList.contains('open')) closeWaitingEditor();
+});
+
+btnWaitingSave.addEventListener('click', function () {
+    const items = waitingInput.value.split('\n').map(t => t.trim()).filter(Boolean);
+    if (!items.length) {
+        waitingHint.textContent = 'Add at least one thing, or press Cancel to keep the current list.';
+        waitingHint.classList.add('error');
+        waitingInput.focus();
+        return;
+    }
+    waitingList = items;
+    renderWaitingList();
+    saveClassState();
+    closeWaitingEditor();
+});
+
 // A brand-new class starts empty so the teacher can type straight into the
 // roster box; it only becomes a real class once they save one.
 btnNewClass.addEventListener('click', function () {
@@ -1448,6 +1559,7 @@ btnNewClass.addEventListener('click', function () {
         id: makeClassId(),
         classLabel: '',
         projectLabel: '',
+        waitingList: DEFAULT_WAITING.slice(),
         desks: [],
         queue: []
     };
@@ -1523,7 +1635,7 @@ btnResetAll.addEventListener('click', function () {
         'Reset',
         function () {
             const before = serializeState();
-            desks.forEach(d => { d.stage = 0; });
+            desks.forEach(d => { if (d) d.stage = 0; });
             queue.length = 0;
             renderAll();
             offerUndo('Class reset to Pre-Writing.', before);
@@ -1734,5 +1846,6 @@ document.addEventListener('keydown', function (e) {
 animateSplashTitle();
 startSplashSky();
 showSplashClass();
+renderWaitingList();
 renderClassSwitcher();   // safe here: the class-setup elements exist by now
 btnEnterApp.focus();
